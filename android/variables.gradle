@@ -1,0 +1,5 @@
+// android/variables.gradle
+ext {
+    kotlin_version = "1.9.24"
+    agp_version    = "8.5.2"
+}
