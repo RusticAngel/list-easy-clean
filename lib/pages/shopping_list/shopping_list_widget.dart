@@ -1,7 +1,7 @@
 // lib/pages/shopping_list/shopping_list_widget.dart
-// FINAL + INTERSTITIAL ON EXIT + 60-sec banner refresh + ZERO ERRORS
+// FINAL + LONG NAMES FIXED PERFECTLY + INTERSTITIAL + 60-sec refresh + ZERO ERRORS
 
-import 'dart:async'; // ← NEW: for Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +13,7 @@ class ShoppingListWidget extends StatefulWidget {
   const ShoppingListWidget({super.key, required this.listId});
 
   @override
-  State<ShoppingListWidget> createState() => _ShoppingListWidgetState();
+State<ShoppingListWidget> createState() => _ShoppingListWidgetState();
 }
 
 class _ShoppingListWidgetState extends State<ShoppingListWidget> {
@@ -34,7 +34,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     super.initState();
     loadItems();
     _loadBannerAd();
-    _loadInterstitialAd(); // Pre-load on page open
+    _loadInterstitialAd();
     _startBannerRefreshTimer();
   }
 
@@ -53,16 +53,15 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   void _startBannerRefreshTimer() {
     Timer.periodic(const Duration(seconds: 60), (timer) {
-      if (mounted && _isBannerAdReady) {
-        _bannerAd.load();
-      }
+      if (mounted && _isBannerAdReady) _bannerAd.load();
     });
   }
 
   // === INTERSTITIAL ===
   void _loadInterstitialAd() {
     InterstitialAd.load(
-adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdRequest(),
+      adUnitId: 'ca-app-pub-1957460965962453/7400405459',
+      request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _interstitialAd = ad;
@@ -81,18 +80,17 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
-          SystemNavigator.pop(); // Close app
+          SystemNavigator.pop();
         },
         onAdFailedToShowFullScreenContent: (ad, err) {
           ad.dispose();
-          SystemNavigator.pop(); // Still exit even if ad fails
+          SystemNavigator.pop();
         },
       );
       await _interstitialAd!.show();
       _interstitialAd = null;
       _isInterstitialReady = false;
     } else {
-      // No ad ready → just exit
       SystemNavigator.pop();
     }
   }
@@ -122,7 +120,8 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
     } catch (e) {
       if (mounted) {
         setState(() => isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -218,66 +217,94 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
 
                             return Container(
                               margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                              decoration: BoxDecoration(color: const Color(0xFF1C1C1E), borderRadius: BorderRadius.circular(16)),
-                              child: Row(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1C1C1E),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Checkbox(
-                                    value: checked,
-                                    activeColor: Colors.white,
-                                    checkColor: Colors.black,
-                                    side: const BorderSide(color: Colors.white54),
-                                    onChanged: (_) => toggleChecked(i),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      name,
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        color: checked ? Colors.white54 : Colors.white,
-                                        decoration: checked ? TextDecoration.lineThrough : null,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
+                                  // ITEM NAME + CHECKBOX — full width, no truncation
                                   Row(
                                     children: [
-                                      _qtyBtn(() => updateQuantity(i, -1), '-'),
-                                      SizedBox(width: 40, child: Center(child: Text('$qty', style: const TextStyle(color: Colors.white, fontSize: 16)))),
-                                      _qtyBtn(() => updateQuantity(i, 1), '+'),
+                                      Checkbox(
+                                        value: checked,
+                                        activeColor: Colors.white,
+                                        checkColor: Colors.black,
+                                        side: const BorderSide(color: Colors.white54),
+                                        onChanged: (_) => toggleChecked(i),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w500,
+                                            color: checked ? Colors.white54 : Colors.white,
+                                            decoration: checked ? TextDecoration.lineThrough : null,
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
-                                  const SizedBox(width: 20),
-                                  GestureDetector(
-                                    onTap: () async {
-                                      final controller = TextEditingController(text: price.toStringAsFixed(0));
-                                      final newPrice = await showDialog<double>(
-                                        context: context,
-                                        builder: (ctx) => AlertDialog(
-                                          backgroundColor: const Color(0xFF1C1C1E),
-                                          title: Text('Set price for $name', style: const TextStyle(color: Colors.white)),
-                                          content: TextField(
-                                            controller: controller,
-                                            keyboardType: TextInputType.number,
-                                            style: const TextStyle(color: Colors.white),
-                                          ),
-                                          actions: [
-                                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
-                                            TextButton(
-                                              onPressed: () => Navigator.pop(ctx, double.tryParse(controller.text) ?? price),
-                                              child: const Text('Save', style: TextStyle(color: Colors.cyan)),
+
+                                  const SizedBox(height: 12),
+
+                                  // QUANTITY + PRICE ROW
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          _qtyBtn(() => updateQuantity(i, -1), '-'),
+                                          Container(
+                                            width: 50,
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              '$qty',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
-                                          ],
+                                          ),
+                                          _qtyBtn(() => updateQuantity(i, 1), '+'),
+                                        ],
+                                      ),
+
+                                      GestureDetector(
+                                        onTap: () async {
+                                          final controller = TextEditingController(text: price.toStringAsFixed(0));
+                                          final newPrice = await showDialog<double>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              backgroundColor: const Color(0xFF1C1C1E),
+                                              title: Text('Set price for $name', style: const TextStyle(color: Colors.white)),
+                                              content: TextField(
+                                                controller: controller,
+                                                keyboardType: TextInputType.number,
+                                                style: const TextStyle(color: Colors.white),
+                                              ),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(ctx, double.tryParse(controller.text) ?? price),
+                                                  child: const Text('Save', style: TextStyle(color: Colors.cyan)),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (newPrice != null && newPrice != price) updatePrice(i, newPrice);
+                                        },
+                                        child: Text(
+                                          'R${price.toStringAsFixed(0)}',
+                                          style: const TextStyle(color: Colors.cyan, fontSize: 20, fontWeight: FontWeight.bold),
                                         ),
-                                      );
-                                      if (newPrice != null && newPrice != price) updatePrice(i, newPrice);
-                                    },
-                                    child: Text(
-                                      'R${price.toStringAsFixed(0)}',
-                                      style: const TextStyle(color: Colors.cyan, fontSize: 16, fontWeight: FontWeight.bold),
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -300,7 +327,7 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
                   ),
                 ),
 
-                // Finish Button → NOW SHOWS INTERSTITIAL
+                // Finish Button → INTERSTITIAL
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
                   child: SizedBox(
@@ -321,7 +348,7 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
                             actions: [
                               Center(
                                 child: ElevatedButton(
-                                  onPressed: _showInterstitialAndExit, // ← THIS IS THE MAGIC
+                                  onPressed: _showInterstitialAndExit,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
@@ -339,21 +366,10 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
                   ),
                 ),
 
-                // Banner (refreshes every 60 sec)
+                // Banner
                 _isBannerAdReady
-                    ? Container(
-                        height: 100,
-                        width: double.infinity,
-                        alignment: Alignment.center,
-                        child: AdWidget(ad: _bannerAd),
-                      )
-                    : Container(
-                        height: 100,
-                        width: double.infinity,
-                        color: const Color(0xFF111111),
-                        alignment: Alignment.center,
-                        child: const Text('Loading ad...', style: TextStyle(color: Colors.white38)),
-                      ),
+                    ? Container(height: 100, alignment: Alignment.center, child: AdWidget(ad: _bannerAd))
+                    : Container(height: 100, color: const Color(0xFF111111), alignment: Alignment.center, child: const Text('Loading ad...', style: TextStyle(color: Colors.white38))),
               ],
             ),
     );
@@ -363,11 +379,11 @@ adUnitId: 'ca-app-pub-1957460965962453/7400405459',      request: const AdReques
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(border: Border.all(color: Colors.white54), borderRadius: BorderRadius.circular(8)),
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(border: Border.all(color: Colors.white54), borderRadius: BorderRadius.circular(10)),
         alignment: Alignment.center,
-        child: Text(text, style: const TextStyle(fontSize: 20, color: Colors.white)),
+        child: Text(text, style: const TextStyle(fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }

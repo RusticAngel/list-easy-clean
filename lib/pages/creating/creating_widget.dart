@@ -1,7 +1,7 @@
 // lib/pages/creating/creating_widget.dart
-// FINAL + 60-second banner refresh + Interstitial-ready + ZERO errors
+// FINAL + PERMANENT DRAFT LIST (survives app close) + 60-sec banner + ZERO ERRORS
 
-import 'dart:async'; // ← ADDED FOR TIMER
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,7 +9,6 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class CreatingWidget extends StatefulWidget {
   const CreatingWidget({super.key});
-
   @override
   State<CreatingWidget> createState() => _CreatingWidgetState();
 }
@@ -26,56 +25,27 @@ class _CreatingWidgetState extends State<CreatingWidget> {
 
   late BannerAd _bannerAd;
   bool _isBannerAdReady = false;
-  Timer? _bannerRefreshTimer; // ← ADDED: for 60-sec refresh
+  Timer? _bannerRefreshTimer;
 
   @override
   void initState() {
     super.initState();
-    loadData();
+    _loadEverything();
     _loadBannerAd();
   }
 
-  void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-1957460965962453/8166692213',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          if (mounted) {
-            setState(() => _isBannerAdReady = true);
-            _startBannerRefresh(); // ← Start auto-refresh on first load
-          }
-        },
-        onAdFailedToLoad: (ad, err) {
-          ad.dispose();
-        },
-      ),
-    )..load();
-  }
-
-  // ← NEW: 60-second Google-approved refresh
-  void _startBannerRefresh() {
-    _bannerRefreshTimer?.cancel();
-    _bannerRefreshTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
-      if (mounted && _isBannerAdReady) {
-        _bannerAd.load(); // Fresh ad every 60 sec = maximum safe revenue
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _bannerAd.dispose();
-    _bannerRefreshTimer?.cancel(); // ← PREVENT MEMORY LEAK
-    searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> loadData() async {
+  Future<void> _loadEverything() async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
+    // 1. Load draft list
+    final draft = await supabase
+        .from('draft_lists')
+        .select('items')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    // 2. Load previous items
     final past = await supabase
         .from('shopping_list_items')
         .select('name')
@@ -90,11 +60,43 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         .take(10)
         .toList();
 
+    // 3. Load referrals
     final refs = await supabase.from('referrals').select().eq('referrer_id', userId);
     referralsThisMonth = refs.length;
     freeMonthsEarned = (referralsThisMonth / 2).floor();
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        selectedItems = (draft?['items'] as List?)
+                ?.map((item) => {
+                      'item_name': item['item_name'] as String,
+                      'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
+                    })
+                .toList() ??
+            [];
+      });
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    if (selectedItems.isEmpty) {
+      await supabase.from('draft_lists').delete().eq('user_id', userId);
+      return;
+    }
+
+    await supabase.from('draft_lists').upsert({
+      'user_id': userId,
+      'items': selectedItems
+          .map((i) => {
+                'item_name': i['item_name'] as String,
+                'quantity': i['quantity'] as int? ?? 1,
+              })
+          .cast<Map<String, Object?>>() // THIS FIXES THE DART ANALYSIS ERROR
+          .toList(),
+    });
   }
 
   void addToSelected(String name) {
@@ -105,10 +107,18 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     setState(() {
       if (!selectedItems.any((i) => (i['item_name'] as String).toLowerCase() == lower)) {
         selectedItems.add({'item_name': trimmed, 'quantity': 1});
+        _saveDraft();
       }
       previousItems.removeWhere((item) => item.toLowerCase() == lower);
     });
     searchController.clear();
+  }
+
+  void removeSelected(int index) {
+    setState(() {
+      selectedItems.removeAt(index);
+      _saveDraft();
+    });
   }
 
   Future<void> removeFromHistory(String name) async {
@@ -118,7 +128,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         backgroundColor: const Color(0xFF1C1C1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Remove from history?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text('"$name" will no longer appear in suggestions.', style: const TextStyle(color: Colors.white70)),
+        content: Text('"$name" will no longer appear in suggestions.', style: TextStyle(color: Colors.white70)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
@@ -131,8 +141,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     }
   }
 
-  void removeSelected(int index) => setState(() => selectedItems.removeAt(index));
-
   Future<void> createListAndGo() async {
     if (selectedItems.isEmpty || isLoading) return;
     setState(() => isLoading = true);
@@ -141,10 +149,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
       final userId = supabase.auth.currentUser!.id;
       final listResp = await supabase
           .from('shopping_lists')
-          .insert({
-            'user_id': userId,
-            'name': 'My List ${DateTime.now().toIso8601String().substring(0, 10)}'
-          })
+          .insert({'user_id': userId, 'name': 'My List ${DateTime.now().toIso8601String().substring(0, 10)}'})
           .select()
           .single();
 
@@ -160,6 +165,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         }).toList(),
       );
 
+      await supabase.from('draft_lists').delete().eq('user_id', userId);
+
       if (mounted) context.go('/shoppingList?listId=$listId');
     } catch (e) {
       if (mounted) {
@@ -168,6 +175,38 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-1957460965962453/8166692213',
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (mounted) {
+            setState(() => _isBannerAdReady = true);
+            _startBannerRefresh();
+          }
+        },
+        onAdFailedToLoad: (ad, err) => ad.dispose(),
+      ),
+    )..load();
+  }
+
+  void _startBannerRefresh() {
+    _bannerRefreshTimer?.cancel();
+    _bannerRefreshTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
+      if (mounted && _isBannerAdReady) _bannerAd.load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _bannerAd.dispose();
+    _bannerRefreshTimer?.cancel();
+    searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -179,14 +218,14 @@ class _CreatingWidgetState extends State<CreatingWidget> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Create Shopping List', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+        title: const Text('My Current List', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Top Card — Search + Previous Items
+            // Search + Previous Items Card
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
@@ -224,32 +263,34 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 140,
-                    child: ListView.builder(
-                      itemCount: previousItems.length,
-                      itemBuilder: (context, i) {
-                        final itemName = previousItems[i];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: GestureDetector(
-                            onTap: () => addToSelected(itemName),
-                            onLongPress: () => removeFromHistory(itemName),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                              decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(30)),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(itemName, style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis),
+                    child: previousItems.isEmpty
+                        ? const Center(child: Text('No previous items yet', style: TextStyle(color: Colors.white38)))
+                        : ListView.builder(
+                            itemCount: previousItems.length,
+                            itemBuilder: (context, i) {
+                              final itemName = previousItems[i];
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: GestureDetector(
+                                  onTap: () => addToSelected(itemName),
+                                  onLongPress: () => removeFromHistory(itemName),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(30)),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(itemName, style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis),
+                                        ),
+                                        const Icon(Icons.swipe, size: 18, color: Colors.white38),
+                                      ],
+                                    ),
                                   ),
-                                  const Icon(Icons.swipe, size: 18, color: Colors.white38),
-                                ],
-                              ),
-                            ),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               ),
@@ -265,18 +306,20 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Free Months Earned; Referrals Needed:', style: TextStyle(color: Colors.white70)),
-                  Row(children: [
-                    Text('$freeMonthsEarned', style: const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(width: 20),
-                    Text('$referralsNeeded', style: const TextStyle(color: Colors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
-                  ]),
+                  Row(
+                    children: [
+                      Text('$freeMonthsEarned', style: const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 20),
+                      Text('$referralsNeeded', style: const TextStyle(color: Colors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
                 ],
               ),
             ),
 
             const SizedBox(height: 20),
 
-            // Selected Items + Buttons + BANNER (now refreshes every 60 sec)
+            // Selected Items + Action Buttons + Banner
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
@@ -287,13 +330,24 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                   const SizedBox(height: 12),
                   SizedBox(
                     height: 200,
-                    child: ListView.builder(
-                      itemCount: selectedItems.length,
-                      itemBuilder: (context, i) => ListTile(
-                        title: Text(selectedItems[i]['item_name'], style: const TextStyle(color: Colors.white)),
-                        trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => removeSelected(i)),
-                      ),
-                    ),
+                    child: selectedItems.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'Start adding items — your list saves automatically!',
+                              style: TextStyle(color: Colors.white54),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: selectedItems.length,
+                            itemBuilder: (context, i) => ListTile(
+                              title: Text(selectedItems[i]['item_name'] as String, style: const TextStyle(color: Colors.white)),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => removeSelected(i),
+                              ),
+                            ),
+                          ),
                   ),
                   const Divider(color: Colors.white24),
                   Text("You've earned: $freeMonthsEarned free months", style: const TextStyle(color: Colors.cyan)),
@@ -310,18 +364,13 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: const StadiumBorder()),
                     child: isLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                        : const Text('Go Shopping', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                        : const Text('Ready to Shop', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 20),
 
-                  // BANNER — NOW AUTO-REFRESHES EVERY 60 SECONDS
+                  // Banner Ad
                   if (_isBannerAdReady)
-                    Container(
-                      height: 90,
-                      width: double.infinity,
-                      alignment: Alignment.center,
-                      child: AdWidget(ad: _bannerAd),
-                    )
+                    Container(height: 90, alignment: Alignment.center, child: AdWidget(ad: _bannerAd))
                   else
                     Container(
                       height: 90,
