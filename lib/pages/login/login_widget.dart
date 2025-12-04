@@ -2,11 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../flutter_flow/ff_app_state.dart';
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({super.key});
-
   @override
   State<LoginWidget> createState() => _LoginWidgetState();
 }
@@ -15,6 +13,23 @@ class _LoginWidgetState extends State<LoginWidget> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   bool isLoading = false;
+
+  Future<void> _login() async {
+    setState(() => isLoading = true);
+    try {
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
+      if (mounted) context.go('/create');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+    setState(() => isLoading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,9 +44,19 @@ class _LoginWidgetState extends State<LoginWidget> {
               const Text('Welcome to List Easy',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 60),
-              TextField(controller: emailController, decoration: _inputDecoration('Email')),
+              TextField(
+                controller: emailController,
+                style: const TextStyle(color: Colors.white),
+                decoration: _input('Email'),
+                keyboardType: TextInputType.emailAddress,
+              ),
               const SizedBox(height: 16),
-              TextField(controller: passwordController, obscureText: true, decoration: _inputDecoration('Password')),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: _input('Password'),
+              ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
@@ -41,35 +66,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                     backgroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                   ),
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          if (isLoading) return;
-                          setState(() => isLoading = true);
-
-                          try {
-                            final resp = await Supabase.instance.client.auth.signInWithPassword(
-                              email: emailController.text.trim(),
-                              password: passwordController.text,
-                            );
-
-                            if (!mounted) return;
-
-                            if (resp.user != null) {
-                              FFAppState.of(context, listen: false).setLoggedIn(true);
-                              context.go('/creation');
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.toString())),
-                            );
-                          } finally {
-                            if (mounted) {
-                              setState(() => isLoading = false);
-                            }
-                          }
-                        },
+                  onPressed: isLoading ? null : _login,
                   child: isLoading
                       ? const CircularProgressIndicator(color: Colors.black)
                       : const Text('Sign In',
@@ -83,7 +80,7 @@ class _LoginWidgetState extends State<LoginWidget> {
                   const Text("Don't have an account? ", style: TextStyle(color: Colors.white70)),
                   GestureDetector(
                     onTap: () => context.go('/signup'),
-                    child: const Text('Sign Up', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: const Text('Sign Up', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -94,7 +91,7 @@ class _LoginWidgetState extends State<LoginWidget> {
     );
   }
 
-  InputDecoration _inputDecoration(String hint) => InputDecoration(
+  InputDecoration _input(String hint) => InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white54),
         filled: true,

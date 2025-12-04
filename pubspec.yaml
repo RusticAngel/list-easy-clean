@@ -17,7 +17,7 @@ dependencies:
 
   # === AUTH & BACKEND ===
   supabase_flutter: ^2.8.0
-  flutter_secure_storage: ^9.2.4  # Stable latest — fixes version conflict
+  flutter_secure_storage: ^9.2.4
 
   # === NAVIGATION & SHARING ===
   go_router: ^17.0.0
@@ -50,9 +50,9 @@ dependencies:
   timeago: ^3.7.1
   url_launcher: ^6.3.2
 
-  # === MONETIZATION ===
+  # === MONETIZATION — NOW LIVE WITH YOUR REAL ADS ===
   google_mobile_ads: ^6.0.0
-  purchases_flutter: ^9.9.9
+  # purchases_flutter: ^9.9.9  # (you can enable later)
 
   # === SIGN IN ===
   google_sign_in: ^6.3.0
