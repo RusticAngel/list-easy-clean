@@ -1,14 +1,17 @@
 // lib/main.dart
+// FINAL + GLOBAL CURRENCY + CLEAN THEME
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Your pages
 import 'pages/login/login_widget.dart';
 import 'pages/signup/signup_widget.dart';
 import 'pages/creating/creating_widget.dart';
 import 'pages/shopping_list/shopping_list_widget.dart';
-import 'pages/referral/referral_screen.dart';  // ← Correct import (your actual file)
+import 'pages/referral/referral_screen.dart';
+import 'pages/share/share_list_page.dart';
+import 'services/currency_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +21,8 @@ void main() async {
     anonKey:
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3aXlmZnhnemRzY2VteGZkZ3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MDgyMzcsImV4cCI6MjA3OTI4NDIzN30.wp3aKt9Cew2RUbO6trT8_WnbXq60KzYQTbLE2LCCvSc',
   );
+
+  await CurrencyService.instance.init();
 
   runApp(const MyApp());
 }
@@ -42,13 +47,21 @@ final _router = GoRouter(
         return ShoppingListWidget(listId: listId);
       },
     ),
-
-    // REFERRAL PAGE — NOW 100% WORKING
+    GoRoute(path: '/referral', builder: (context, state) => const ReferralScreen()),
     GoRoute(
-      path: '/referral',
-      builder: (context, state) => const ReferralScreen(),  // ← This matches your class name
+      path: '/share/:shareId',
+      builder: (context, state) {
+        final shareId = state.pathParameters['shareId']!;
+        return ShareListPage(shareId: shareId);
+      },
     ),
   ],
+  errorBuilder: (context, state) => Scaffold(
+    backgroundColor: Colors.black,
+    body: Center(
+      child: Text('Page not found :(', style: TextStyle(color: Colors.white70, fontSize: 18)),
+    ),
+  ),
 );
 
 class MyApp extends StatelessWidget {
@@ -59,7 +72,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp.router(
       title: 'List Easy',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
+        useMaterial3: true,
+      ),
       routerConfig: _router,
     );
   }

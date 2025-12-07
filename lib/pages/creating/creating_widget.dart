@@ -1,5 +1,5 @@
 // lib/pages/creating/creating_widget.dart
-// FINAL + PERMANENT DRAFT LIST (survives app close) + 60-sec banner + ZERO ERRORS
+// FINAL + TAP REMOVES ITEM + SMART SEARCH + FREQUENCY SORT + PERFECT
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -18,9 +18,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   final searchController = TextEditingController();
 
   List<String> previousItems = [];
+  List<String> filteredPreviousItems = [];
   List<Map<String, dynamic>> selectedItems = [];
-  int referralsThisMonth = 0;
-  int freeMonthsEarned = 0;
   bool isLoading = false;
 
   late BannerAd _bannerAd;
@@ -38,32 +37,26 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    // 1. Load draft list
     final draft = await supabase
         .from('draft_lists')
         .select('items')
         .eq('user_id', userId)
         .maybeSingle();
 
-    // 2. Load previous items
     final past = await supabase
         .from('shopping_list_items')
-        .select('name')
+        .select('name, buy_count')
         .eq('user_id', userId)
+        .order('buy_count', ascending: false)
         .order('created_at', ascending: false)
-        .limit(50);
+        .limit(100);
 
     final seen = <String>{};
     previousItems = past
         .map<String>((e) => e['name'] as String)
         .where((name) => seen.add(name.toLowerCase()))
-        .take(10)
+        .take(30)
         .toList();
-
-    // 3. Load referrals
-    final refs = await supabase.from('referrals').select().eq('referrer_id', userId);
-    referralsThisMonth = refs.length;
-    freeMonthsEarned = (referralsThisMonth / 2).floor();
 
     if (mounted) {
       setState(() {
@@ -74,6 +67,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                     })
                 .toList() ??
             [];
+        filteredPreviousItems = previousItems;
       });
     }
   }
@@ -94,7 +88,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                 'item_name': i['item_name'] as String,
                 'quantity': i['quantity'] as int? ?? 1,
               })
-          .cast<Map<String, Object?>>() // THIS FIXES THE DART ANALYSIS ERROR
+          .cast<Map<String, Object?>>()
           .toList(),
     });
   }
@@ -105,12 +99,17 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     final lower = trimmed.toLowerCase();
 
     setState(() {
+      // Add to selected if not already there
       if (!selectedItems.any((i) => (i['item_name'] as String).toLowerCase() == lower)) {
         selectedItems.add({'item_name': trimmed, 'quantity': 1});
         _saveDraft();
       }
+
+      // REMOVE FROM BOTH LISTS — THIS MAKES IT DISAPPEAR
       previousItems.removeWhere((item) => item.toLowerCase() == lower);
+      filteredPreviousItems = previousItems;
     });
+
     searchController.clear();
   }
 
@@ -137,7 +136,10 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     );
 
     if (confirm == true && mounted) {
-      setState(() => previousItems.remove(name));
+      setState(() {
+        previousItems.remove(name);
+        filteredPreviousItems = previousItems;
+      });
     }
   }
 
@@ -154,6 +156,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
           .single();
 
       final listId = listResp['id'];
+
       await supabase.from('shopping_list_items').insert(
         selectedItems.map((i) => {
           'list_id': listId,
@@ -164,6 +167,15 @@ class _CreatingWidgetState extends State<CreatingWidget> {
           'is_checked': false,
         }).toList(),
       );
+
+      // Increment buy_count
+      final itemNames = selectedItems.map((i) => i['item_name'] as String).toList();
+      if (itemNames.isNotEmpty) {
+        await supabase.rpc('increment_buy_count', params: {
+          'p_user_id': userId,
+          'p_item_names': itemNames,
+        });
+      }
 
       await supabase.from('draft_lists').delete().eq('user_id', userId);
 
@@ -211,21 +223,21 @@ class _CreatingWidgetState extends State<CreatingWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final referralsNeeded = referralsThisMonth % 2 == 0 ? 2 : 2 - (referralsThisMonth % 2);
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: const Text('My Current List', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Creating my list',
+          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Search + Previous Items Card
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
@@ -239,14 +251,42 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                           controller: searchController,
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            hintText: 'Search products',
+                            hintText: 'Add item',
                             hintStyle: const TextStyle(color: Colors.white54),
                             filled: true,
                             fillColor: const Color(0xFF111111),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                             prefixIcon: const Icon(Icons.search, color: Colors.cyan),
+                            suffixIcon: searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, color: Colors.white54),
+                                    onPressed: () {
+                                      searchController.clear();
+                                      setState(() => filteredPreviousItems = previousItems);
+                                    },
+                                  )
+                                : null,
                           ),
-                          onSubmitted: addToSelected,
+                          onChanged: (value) {
+                            setState(() {
+                              if (value.isEmpty) {
+                                filteredPreviousItems = previousItems;
+                              } else {
+                                final query = value.toLowerCase();
+                                filteredPreviousItems = previousItems.where((item) {
+                                  return item.toLowerCase().contains(query);
+                                }).toList()
+                                  ..sort((a, b) {
+                                    final aLower = a.toLowerCase();
+                                    final bLower = b.toLowerCase();
+                                    final aStarts = aLower.startsWith(query) ? 0 : 1;
+                                    final bStarts = bLower.startsWith(query) ? 0 : 1;
+                                    return aStarts.compareTo(bStarts);
+                                  });
+                              }
+                            });
+                          },
+                          onSubmitted: (value) => addToSelected(value),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -263,16 +303,16 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 140,
-                    child: previousItems.isEmpty
-                        ? const Center(child: Text('No previous items yet', style: TextStyle(color: Colors.white38)))
+                    child: filteredPreviousItems.isEmpty
+                        ? const Center(child: Text('No matching items', style: TextStyle(color: Colors.white38)))
                         : ListView.builder(
-                            itemCount: previousItems.length,
+                            itemCount: filteredPreviousItems.length,
                             itemBuilder: (context, i) {
-                              final itemName = previousItems[i];
+                              final itemName = filteredPreviousItems[i];
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 4),
                                 child: GestureDetector(
-                                  onTap: () => addToSelected(itemName),
+                                  onTap: () => addToSelected(itemName), // Taps work
                                   onLongPress: () => removeFromHistory(itemName),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -296,30 +336,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
               ),
             ),
 
-            const SizedBox(height: 16),
-
-            // Referral Progress
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Free Months Earned; Referrals Needed:', style: TextStyle(color: Colors.white70)),
-                  Row(
-                    children: [
-                      Text('$freeMonthsEarned', style: const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 20),
-                      Text('$referralsNeeded', style: const TextStyle(color: Colors.orange, fontSize: 24, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
             const SizedBox(height: 20),
 
-            // Selected Items + Action Buttons + Banner
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
@@ -349,9 +367,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                             ),
                           ),
                   ),
-                  const Divider(color: Colors.white24),
-                  Text("You've earned: $freeMonthsEarned free months", style: const TextStyle(color: Colors.cyan)),
-                  Text("$referralsNeeded more referrals needed for your next free month", style: const TextStyle(color: Colors.white54)),
                   const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () => context.push('/referral'),
@@ -368,7 +383,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Banner Ad
                   if (_isBannerAdReady)
                     Container(height: 90, alignment: Alignment.center, child: AdWidget(ad: _bannerAd))
                   else

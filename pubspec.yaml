@@ -1,92 +1,60 @@
 name: list_easy
-description: A new Flutter project.
+description: The smartest grocery list app in the world.
 publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  flutter_web_plugins:
-    sdk: flutter
 
-  # === AUTH & BACKEND ===
+  # === CORE ===
   supabase_flutter: ^2.8.0
   flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.5.3
 
   # === NAVIGATION & SHARING ===
-  go_router: ^17.0.0
-  share_plus: ^12.0.1
+  go_router: ^14.3.0
+  share_plus: ^10.0.3
+  url_launcher: ^6.3.0           # REQUIRED FOR DIRECT WHATSAPP/FACEBOOK
 
-  # === UI & STYLING ===
-  auto_size_text: ^3.0.0
-  cached_network_image: ^3.4.1
-  flutter_animate: ^4.5.2
-  flutter_cache_manager: ^3.4.1
-  flutter_spinkit: ^5.2.2
-  font_awesome_flutter: ^10.12.0
-  from_css_color: ^2.0.0
-  google_fonts: ^6.2.1
-  page_transition: ^2.1.0
-  percent_indicator: ^4.2.3
-
-  # === STATE & UTILS ===
-  provider: ^6.1.5
-  collection: ^1.19.1
-  csv: ^6.0.0
-  intl: ^0.20.2
-  json_path: ^0.8.0
-  path_provider: ^2.1.5
-  rxdart: ^0.28.0
-  shared_preferences: ^2.5.3
-  sqflite: ^2.4.2
-  stream_transform: ^2.1.1
-  synchronized: ^3.4.0
-  timeago: ^3.7.1
-  url_launcher: ^6.3.2
-
-  # === MONETIZATION — NOW LIVE WITH YOUR REAL ADS ===
-  google_mobile_ads: ^6.0.0
-  # purchases_flutter: ^9.9.9  # (you can enable later)
-
-  # === SIGN IN ===
+  # === SOCIAL AUTH — LIVE TODAY ===
   google_sign_in: ^6.3.0
+  flutter_facebook_auth: ^7.1.1
   sign_in_with_apple: ^7.0.1
 
-  cupertino_icons: ^1.0.8
+  # === MONETIZATION — EARNING FROM DAY 1 ===
+  google_mobile_ads: ^6.0.0
 
-dependency_overrides:
-  http: ^1.6.0
-  uuid: ^4.5.2
+  # === UTILS ===
+  intl: ^0.20.2
+
+  cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
-  flutterflow_cli: ^0.0.28
 
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  web:
-    generate: true
-  image_path: "assets/images/adaptive_foreground_icon.png"
+  image_path: "assets/images/app_icon.png"
   adaptive_icon_background: "#00000000"
-  adaptive_icon_foreground: "assets/images/adaptive_foreground_icon.png"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
 
 flutter:
   uses-material-design: true
+
   assets:
-    - assets/fonts/
     - assets/images/
-    - assets/videos/
-    - assets/audios/
-    - assets/rive_animations/
-    - assets/pdfs/
-    - assets/jsons/
+    - assets/google_logo.png
+    - assets/facebook_logo.png
+    - assets/whatsapp_logo.jpg
+    - assets/WhatsApp.svg          # Optional — looks crisp on high-res screens
