@@ -1,11 +1,12 @@
 // lib/pages/login/login_widget.dart
-// FINAL LAUNCH VERSION — GOOGLE + FACEBOOK + EMAIL — 100% WORKING
+// FINAL LAUNCH VERSION — EMAIL + PASSWORD ONLY (ROCK SOLID)
+// Friendly error messages — no more scary AuthExceptions
+// Graceful offline handling with nice message
 
+import 'dart:io'; // For SocketException
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 class LoginWidget extends StatefulWidget {
   const LoginWidget({super.key});
@@ -18,77 +19,55 @@ class _LoginWidgetState extends State<LoginWidget> {
   final passwordController = TextEditingController();
   bool isLoading = false;
 
-  // EMAIL LOGIN
   Future<void> _loginWithEmail() async {
+    if (isLoading) return;
     setState(() => isLoading = true);
+
     try {
       await Supabase.instance.client.auth.signInWithPassword(
         email: emailController.text.trim(),
         password: passwordController.text,
       );
+
+      // Success → go to create list
       if (mounted) context.go('/create');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } on AuthException catch (e) {
+      String message = 'Please sign up first';
+
+      if (e.message.toLowerCase().contains('invalid login credentials') ||
+          e.message.toLowerCase().contains('user not found')) {
+        message = 'Please sign up first';
+      } else if (e.message.toLowerCase().contains('password')) {
+        message = 'Incorrect password';
       }
-    }
-    setState(() => isLoading = false);
-  }
 
-  // GOOGLE LOGIN — 100% WORKING WITH YOUR CLIENT ID
-  Future<void> _signInWithGoogle() async {
-    try {
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        serverClientId: '676500740076-te27b9cad5olqh9b92dvph7qtss4ufvv.apps.googleusercontent.com',
-        scopes: ['email'],
-      );
-
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) return;
-
-      final googleAuth = await googleUser.authentication;
-      final idToken = googleAuth.idToken;
-
-      if (idToken == null) throw 'No ID token from Google';
-
-      await Supabase.instance.client.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-      );
-
-      if (mounted) context.go('/create');
-    } catch (e) {
-      print('Google login error: $e'); // For debug
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Google login failed — please try again')),
-        );
+        _showError(message);
       }
+    } on SocketException catch (_) {
+      // No internet
+      if (mounted) {
+        _showError(
+            'No internet connection — please check your network and try again');
+      }
+    } catch (e) {
+      // Any other error
+      if (mounted) {
+        _showError('Login failed — please try again');
+      }
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
-  // FACEBOOK LOGIN — 100% WORKING
-  Future<void> _signInWithFacebook() async {
-    try {
-      final result = await FacebookAuth.instance.login();
-      if (result.status != LoginStatus.success) return;
-
-      final accessToken = result.accessToken!.tokenString;
-
-      await Supabase.instance.client.auth.signInWithIdToken(
-        provider: OAuthProvider.facebook,
-        idToken: accessToken,
-      );
-
-      if (mounted) context.go('/create');
-    } catch (e) {
-      print('Facebook login error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Facebook login failed')),
-        );
-      }
-    }
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.deepOrange,
+        duration: const Duration(seconds: 6),
+      ),
+    );
   }
 
   @override
@@ -101,80 +80,78 @@ class _LoginWidgetState extends State<LoginWidget> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('Welcome to List Easy',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Text(
+                'Welcome to List Easy',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
               const SizedBox(height: 60),
 
-              // EMAIL + PASSWORD
+              // Email
               TextField(
                 controller: emailController,
                 style: const TextStyle(color: Colors.white),
-                decoration: _input('Email'),
                 keyboardType: TextInputType.emailAddress,
+                decoration: _input('Email'),
               ),
               const SizedBox(height: 16),
+
+              // Password
               TextField(
                 controller: passwordController,
                 obscureText: true,
                 style: const TextStyle(color: Colors.white),
                 decoration: _input('Password'),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 32),
 
+              // Sign In Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
+                  onPressed: isLoading ? null : _loginWithEmail,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
                   ),
-                  onPressed: isLoading ? null : _loginWithEmail,
                   child: isLoading
                       ? const CircularProgressIndicator(color: Colors.black)
-                      : const Text('Sign In', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
+                      : const Text(
+                          'Sign In',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
                 ),
               ),
-              const SizedBox(height: 40),
 
-              const Text('or continue with', style: TextStyle(color: Colors.white54)),
-              const SizedBox(height: 20),
+              const SizedBox(height: 60),
 
-              // GOOGLE BUTTON
-              ElevatedButton.icon(
-                onPressed: _signInWithGoogle,
-                icon: Image.asset('assets/google_logo.png', height: 24),
-                label: const Text('Google', style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // FACEBOOK BUTTON
-              ElevatedButton.icon(
-                onPressed: _signInWithFacebook,
-                icon: Image.asset('assets/facebook_logo.png', height: 24),
-                label: const Text('Facebook', style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1877F2),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                ),
-              ),
-              const SizedBox(height: 40),
-
+              // Sign Up link
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Don't have an account? ", style: TextStyle(color: Colors.white70)),
+                  const Text(
+                    "Don't have an account? ",
+                    style: TextStyle(color: Colors.white70),
+                  ),
                   GestureDetector(
                     onTap: () => context.go('/signup'),
-                    child: const Text('Sign Up', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Sign Up',
+                      style: TextStyle(
+                        color: Colors.cyan,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -190,6 +167,11 @@ class _LoginWidgetState extends State<LoginWidget> {
         hintStyle: const TextStyle(color: Colors.white54),
         filled: true,
         fillColor: const Color(0xFF1A1A1A),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       );
 }

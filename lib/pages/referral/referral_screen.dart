@@ -1,12 +1,13 @@
 // lib/pages/referral/referral_screen.dart
-// FINAL LAUNCH VERSION — NATIVE WHATSAPP + FACEBOOK DIRECT SHARE
+// FINAL VERSION WITH ALL TIERS + BANNER AD + SMALLER TEXT
+// + Consistent "Loading ad..." placeholder (matches other pages)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
@@ -17,51 +18,33 @@ class ReferralScreen extends StatefulWidget {
 class _ReferralScreenState extends State<ReferralScreen> {
   final supabase = Supabase.instance.client;
 
-  String referralCode = 'LOADING';
-  String referralLink = 'Loading...';
+  String referralCode = 'LOADING...';
+  String referralLink = '';
   int totalReferrals = 0;
   int freeMonths = 0;
-  List<Map<String, dynamic>> leaderboard = [];
+
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadBannerAd();
   }
 
   Future<void> _loadData() async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    final code = user.userMetadata?['referral_code'] ?? user.id.substring(0, 8).toUpperCase();
-    final link = 'https://play.google.com/store/apps/details?id=com.yourname.listeasy&referral=$code';
+    final code = user.userMetadata?['referral_code'] ??
+        user.id.substring(0, 8).toUpperCase();
+    final link =
+        'https://play.google.com/store/apps/details?id=com.rusticangel.list_easy&referral=$code';
 
-    final refs = await supabase.from('referrals').select().eq('referrer_id', user.id);
+    final refs =
+        await supabase.from('referrals').select().eq('referrer_id', user.id);
     final count = refs.length;
-
-    final now = DateTime.now();
-    final firstDay = DateTime(now.year, now.month, 1);
-    final boardData = await supabase
-        .from('referrals')
-        .select('referrer_id')
-        .gte('created_at', firstDay.toIso8601String());
-
-    final scores = <String, int>{};
-    for (var r in boardData) {
-      final id = r['referrer_id'] as String;
-      scores[id] = (scores[id] ?? 0) + 1;
-    }
-    final sorted = scores.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final top10 = sorted.take(10).toList();
-
-    final topUsers = <Map<String, dynamic>>[];
-    for (var e in top10) {
-      final profile = await supabase.from('profiles').select('username').eq('id', e.key).maybeSingle();
-      topUsers.add({
-        'username': profile?['username'] ?? 'User${e.key.substring(0, 6)}',
-        'count': e.value,
-      });
-    }
 
     if (mounted) {
       setState(() {
@@ -69,38 +52,43 @@ class _ReferralScreenState extends State<ReferralScreen> {
         referralLink = link;
         totalReferrals = count;
         freeMonths = (count / 2).floor();
-        leaderboard = topUsers;
       });
     }
   }
 
-  // DIRECT SHARE — OPENS WHATSAPP/FACEBOOK NATIVE APP
-  Future<void> _shareViaApp(String platform) async {
-    final message = '''
-I just saved R287 on groceries with List Easy — the smartest shopping app in SA!
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-1957460965962453/8166692213',
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) => setState(() => _isBannerAdReady = true),
+        onAdFailedToLoad: (ad, err) => ad.dispose(),
+      ),
+    )..load();
+  }
 
-It learns what I buy every week and shows it first.
+  void _shareReferral() {
+    final message = '''
+I’m loving List Easy — the smartest grocery app ever!
+
+It learns what I buy and puts it at the top of the list. Saves me so much time.
 
 Download free and get your first month premium FREE with my code:
 
 $referralLink
 
-Use my referral and we both get free premium months!
-    '''.trim();
+We both get free premium months when you sign up and finish a shopping adventure!
+    '''
+        .trim();
 
-    String url = '';
-    if (platform == 'whatsapp') {
-      url = 'whatsapp://send?text=${Uri.encodeComponent(message)}';
-    } else if (platform == 'facebook') {
-      url = 'fb://facewebmodal/f?href=${Uri.encodeComponent(referralLink)}';
-    }
+    Share.share(message, subject: 'Join me on List Easy!');
+  }
 
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url));
-    } else {
-      // Fallback to system share
-      await Share.share(message, subject: 'Join me on List Easy!');
-    }
+  @override
+  void dispose() {
+    _bannerAd?.dispose();
+    super.dispose();
   }
 
   @override
@@ -109,8 +97,12 @@ Use my referral and we both get free premium months!
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => context.pop()),
-        title: const Text('Referral Program', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () => context.pop(),
+        ),
+        title: const Text('Referral Program',
+            style: TextStyle(color: Colors.white, fontSize: 20)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -118,120 +110,251 @@ Use my referral and we both get free premium months!
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Your Stats (unchanged)
+            // Your Stats
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: const Color(0xFF1C1C1E), borderRadius: BorderRadius.circular(16)),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Column(
                 children: [
-                  const Text('Your Stats', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 16),
+                  const Text('Your Referral Stats',
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                  const SizedBox(height: 20),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _statColumn(totalReferrals.toString(), 'Total Referrals'),
-                      _statColumn(freeMonths.toString(), 'Free Months Earned'),
+                      _statItem('$totalReferrals', 'Total Referrals'),
+                      _statItem('$freeMonths', 'Free Months Earned'),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   LinearProgressIndicator(
                     value: (totalReferrals % 2) / 2,
                     backgroundColor: Colors.white24,
-                    valueColor: const AlwaysStoppedAnimation(Colors.cyan),
+                    valueColor: const AlwaysStoppedAnimation(Colors.white70),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   Text(
-                    '${2 - (totalReferrals % 2)} more referrals needed',
+                    '${2 - (totalReferrals % 2)} more needed for next free month',
                     style: const TextStyle(color: Colors.white70),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
 
-            // Invite Friends — NOW WITH NATIVE SHARE BUTTONS
+            // Referral Link + Share Buttons
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: const Color(0xFF1C1C1E), borderRadius: BorderRadius.circular(16)),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Invite Friends', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 12),
-                  const Text('Referral Link', style: TextStyle(color: Colors.white70)),
-                  const SizedBox(height: 8),
+                  const Text('Share Your Link',
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                          decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(8)),
-                          child: SelectableText(referralLink, style: const TextStyle(color: Colors.cyan)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF111111),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: SelectableText(
+                            referralLink,
+                            style: const TextStyle(
+                                color: Colors.cyan, fontSize: 16),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 12),
                       IconButton(
                         icon: const Icon(Icons.copy, color: Colors.white70),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: referralLink));
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied!')));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Link copied!')),
+                          );
                         },
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  const Text('Share via', style: TextStyle(color: Colors.white70, fontSize: 16)),
-                  const SizedBox(height: 16),
-
-                  // WHATSAPP — OPENS NATIVE APP
-                  ElevatedButton.icon(
-                    onPressed: () => _shareViaApp('whatsapp'),
-                    icon: Image.asset('assets/whatsapp_logo.jpg', height: 28),
-                    label: const Text('Share on WhatsApp', style: TextStyle(fontSize: 18)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // FACEBOOK — OPENS NATIVE APP
-                  ElevatedButton.icon(
-                    onPressed: () => _shareViaApp('facebook'),
-                    icon: Image.asset('assets/facebook_logo.png', height: 28),
-                    label: const Text('Share on Facebook', style: TextStyle(fontSize: 18)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1877F2),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _shareReferral,
+                      icon: const Icon(Icons.share, size: 28),
+                      label: const Text('Share with Friends',
+                          style: TextStyle(fontSize: 18)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.cyan,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30)),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // Rest of your screen (How it Works, Leaderboard, etc.) unchanged
-            const SizedBox(height: 24),
-            // ... keep your existing How it Works + Leaderboard sections ...
+            const SizedBox(height: 32),
+
+            // How It Works
+            const Text('How It Works',
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white)),
+            const SizedBox(height: 20),
+            _howItWorksItem('1', 'Share your unique link',
+                'Send it to friends, family, or on social media'),
+            _howItWorksItem('2', 'They sign up & use the app',
+                'They must create at least one list'),
+            _howItWorksItem('3', 'You both get rewarded',
+                'Every 2 successful referrals = 1 free premium month'),
+
+            const SizedBox(height: 40),
+
+            // Reward Tiers — with Diamond + Legend + smaller text
+            const Text('Reward Tiers',
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white)),
+            const SizedBox(height: 20),
+            _tierCard('Bronze', '10 referrals', '1 month free'),
+            _tierCard('Silver', '20 referrals', '3 months free'),
+            _tierCard('Gold', '30 referrals', '6 months free'),
+            _tierCard('Platinum', '40 referrals', '9 months free'),
+            _tierCard('Diamond', '50 referrals', '12 months free'),
+            _tierCard('Legend', '100 referrals', 'Lifetime free',
+                isSpecial: true),
+
+            const SizedBox(height: 40),
+
+            // Banner Ad at Bottom (with consistent placeholder)
+            if (_isBannerAdReady)
+              Container(
+                height: _bannerAd!.size.height.toDouble(),
+                width: double.infinity,
+                alignment: Alignment.center,
+                child: AdWidget(ad: _bannerAd!),
+              )
+            else
+              Container(
+                height: 90,
+                color: const Color(0xFF111111),
+                alignment: Alignment.center,
+                child: const Text(
+                  'Loading ad...',
+                  style: TextStyle(color: Colors.white38),
+                ),
+              ),
+
+            const SizedBox(height: 100), // Extra space at bottom
           ],
         ),
       ),
     );
   }
 
-  // Keep your existing helper widgets (_statColumn, _tierBox, etc.) unchanged
-  Widget _statColumn(String value, String label) => Column(
+  Widget _statItem(String value, String label) => Column(
         children: [
-          Text(value, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
-          Text(label, style: const TextStyle(color: Colors.white70)),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 40,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.cyan)),
+          Text(label,
+              style: const TextStyle(color: Colors.white70, fontSize: 14)),
         ],
       );
 
-  // ... rest of your helper widgets (tierBox, howItWorksStep, etc.) unchanged ...
+  Widget _howItWorksItem(String number, String title, String subtitle) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.cyan,
+              child: Text(number,
+                  style: const TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(color: Colors.white70)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _tierCard(String tier, String needed, String reward,
+          {bool isSpecial = false}) =>
+      Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isSpecial ? const Color(0xFF6A1B9A) : const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(16),
+          border: isSpecial
+              ? Border.all(color: Colors.purpleAccent, width: 2)
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(tier,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isSpecial ? Colors.white : Colors.cyan)),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(reward,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.greenAccent)), // Smaller text
+                Text(needed,
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 12)), // Smaller text
+              ],
+            ),
+          ],
+        ),
+      );
 }

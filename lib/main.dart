@@ -1,9 +1,11 @@
 // lib/main.dart
-// FINAL + GLOBAL CURRENCY + CLEAN THEME
+// FINAL + GLOBAL CURRENCY + CLEAN THEME + FULL OFFLINE SUPPORT + PUSH NOTIFICATIONS
+// + Tag for first-time users (has_created_list = false)
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart'; // Push notifications
 
 import 'pages/login/login_widget.dart';
 import 'pages/signup/signup_widget.dart';
@@ -24,6 +26,14 @@ void main() async {
 
   await CurrencyService.instance.init();
 
+  // OneSignal Push Notifications
+  OneSignal.initialize("84e06ac2-ee74-4943-8185-e5f433dc87cb");
+  OneSignal.Notifications.requestPermission(
+      true); // Ask permission on first launch
+
+  // Default tag: user hasn't created a list yet
+  OneSignal.User.addTagWithKey("has_created_list", "false");
+
   runApp(const MyApp());
 }
 
@@ -39,15 +49,30 @@ final _router = GoRouter(
     ),
     GoRoute(path: '/login', builder: (context, state) => const LoginWidget()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupWidget()),
-    GoRoute(path: '/create', builder: (context, state) => const CreatingWidget()),
+    GoRoute(
+        path: '/create', builder: (context, state) => const CreatingWidget()),
     GoRoute(
       path: '/shoppingList',
       builder: (context, state) {
-        final listId = int.parse(state.uri.queryParameters['listId']!);
+        final queryParams = state.uri.queryParameters;
+
+        // Offline mode — no listId needed
+        if (queryParams['offline'] == 'true') {
+          return const ShoppingListWidget(isOffline: true);
+        }
+
+        // Normal online mode — listId required
+        final listIdStr = queryParams['listId'];
+        if (listIdStr == null) {
+          return const CreatingWidget();
+        }
+
+        final listId = int.parse(listIdStr);
         return ShoppingListWidget(listId: listId);
       },
     ),
-    GoRoute(path: '/referral', builder: (context, state) => const ReferralScreen()),
+    GoRoute(
+        path: '/referral', builder: (context, state) => const ReferralScreen()),
     GoRoute(
       path: '/share/:shareId',
       builder: (context, state) {
@@ -59,7 +84,10 @@ final _router = GoRouter(
   errorBuilder: (context, state) => Scaffold(
     backgroundColor: Colors.black,
     body: Center(
-      child: Text('Page not found :(', style: TextStyle(color: Colors.white70, fontSize: 18)),
+      child: Text(
+        'Page not found :(',
+        style: TextStyle(color: Colors.white70, fontSize: 18),
+      ),
     ),
   ),
 );

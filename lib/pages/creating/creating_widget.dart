@@ -1,11 +1,16 @@
 // lib/pages/creating/creating_widget.dart
-// FINAL + TAP REMOVES ITEM + SMART SEARCH + FREQUENCY SORT + PERFECT
+// FINAL + TAP REMOVES ITEM + SMART SEARCH + FREQUENCY SORT + PERFECT + OFFLINE LIST CREATION
+// Graceful offline handling + OneSignal tag + KEYBOARD FIX USING LISTVIEW (best for small screens)
 
 import 'dart:async';
+import 'dart:convert'; // For jsonEncode/decode
+import 'dart:io'; // For internet check
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // For local storage
+import 'package:onesignal_flutter/onesignal_flutter.dart'; // For push tag
 
 class CreatingWidget extends StatefulWidget {
   const CreatingWidget({super.key});
@@ -25,6 +30,9 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   late BannerAd _bannerAd;
   bool _isBannerAdReady = false;
   Timer? _bannerRefreshTimer;
+
+  // Local storage for offline list
+  static const String _offlineListKey = 'offline_shopping_list';
 
   @override
   void initState() {
@@ -99,13 +107,12 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     final lower = trimmed.toLowerCase();
 
     setState(() {
-      // Add to selected if not already there
-      if (!selectedItems.any((i) => (i['item_name'] as String).toLowerCase() == lower)) {
+      if (!selectedItems
+          .any((i) => (i['item_name'] as String).toLowerCase() == lower)) {
         selectedItems.add({'item_name': trimmed, 'quantity': 1});
         _saveDraft();
       }
 
-      // REMOVE FROM BOTH LISTS — THIS MAKES IT DISAPPEAR
       previousItems.removeWhere((item) => item.toLowerCase() == lower);
       filteredPreviousItems = previousItems;
     });
@@ -126,11 +133,18 @@ class _CreatingWidgetState extends State<CreatingWidget> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1C1C1E),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Remove from history?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text('"$name" will no longer appear in suggestions.', style: TextStyle(color: Colors.white70)),
+        title: const Text('Remove from history?',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text('"$name" will no longer appear in suggestions.',
+            style: TextStyle(color: Colors.white70)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove', style: TextStyle(color: Colors.red))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Colors.white70))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remove', style: TextStyle(color: Colors.red))),
         ],
       ),
     );
@@ -148,45 +162,100 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     setState(() => isLoading = true);
 
     try {
+      final response = await InternetAddress.lookup('supabase.co')
+          .timeout(const Duration(seconds: 4));
+      final hasInternet =
+          response.isNotEmpty && response[0].rawAddress.isNotEmpty;
+
+      if (!hasInternet) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_offlineListKey, jsonEncode(selectedItems));
+        if (mounted) context.go('/shoppingList?offline=true');
+        return;
+      }
+
       final userId = supabase.auth.currentUser!.id;
       final listResp = await supabase
           .from('shopping_lists')
-          .insert({'user_id': userId, 'name': 'My List ${DateTime.now().toIso8601String().substring(0, 10)}'})
+          .insert({
+            'user_id': userId,
+            'name':
+                'My List ${DateTime.now().toIso8601String().substring(0, 10)}'
+          })
           .select()
           .single();
 
       final listId = listResp['id'];
 
       await supabase.from('shopping_list_items').insert(
-        selectedItems.map((i) => {
-          'list_id': listId,
-          'user_id': userId,
-          'name': i['item_name'],
-          'quantity': i['quantity'] ?? 1,
-          'price': 0.0,
-          'is_checked': false,
-        }).toList(),
-      );
+            selectedItems
+                .map((i) => {
+                      'list_id': listId,
+                      'user_id': userId,
+                      'name': i['item_name'],
+                      'quantity': i['quantity'] ?? 1,
+                      'price': 0.0,
+                      'is_checked': false,
+                    })
+                .toList(),
+          );
 
-      // Increment buy_count
-      final itemNames = selectedItems.map((i) => i['item_name'] as String).toList();
+      final itemNames =
+          selectedItems.map((i) => i['item_name'] as String).toList();
       if (itemNames.isNotEmpty) {
-        await supabase.rpc('increment_buy_count', params: {
-          'p_user_id': userId,
-          'p_item_names': itemNames,
-        });
+        await supabase.rpc('increment_buy_count',
+            params: {'p_user_id': userId, 'p_item_names': itemNames});
       }
 
       await supabase.from('draft_lists').delete().eq('user_id', userId);
 
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_offlineListKey)) {
+        final offlineItems =
+            jsonDecode(prefs.getString(_offlineListKey)!) as List;
+        await supabase.from('shopping_list_items').insert(
+              offlineItems
+                  .map((i) => {
+                        'list_id': listId,
+                        'user_id': userId,
+                        'name': i['item_name'],
+                        'quantity': i['quantity'] ?? 1,
+                        'price': 0.0,
+                        'is_checked': false,
+                      })
+                  .toList(),
+            );
+        await prefs.remove(_offlineListKey);
+      }
+
+      OneSignal.User.addTagWithKey("has_created_list", "true");
+
       if (mounted) context.go('/shoppingList?listId=$listId');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      if (mounted) _showNoInternetDialog();
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
+  }
+
+  void _showNoInternetDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text('No Internet', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'You\'re offline. Your list is saved locally and you can continue shopping.\nIt will sync when you\'re back online.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK', style: TextStyle(color: Colors.cyan)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _loadBannerAd() {
@@ -225,178 +294,226 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: true, // Ensures keyboard pushes content up
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
         title: const Text(
           'Creating my list',
-          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          style: TextStyle(
+              color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: searchController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Add item',
-                            hintStyle: const TextStyle(color: Colors.white54),
-                            filled: true,
-                            fillColor: const Color(0xFF111111),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                            prefixIcon: const Icon(Icons.search, color: Colors.cyan),
-                            suffixIcon: searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear, color: Colors.white54),
-                                    onPressed: () {
-                                      searchController.clear();
-                                      setState(() => filteredPreviousItems = previousItems);
-                                    },
-                                  )
-                                : null,
-                          ),
-                          onChanged: (value) {
-                            setState(() {
-                              if (value.isEmpty) {
-                                filteredPreviousItems = previousItems;
-                              } else {
-                                final query = value.toLowerCase();
-                                filteredPreviousItems = previousItems.where((item) {
-                                  return item.toLowerCase().contains(query);
-                                }).toList()
-                                  ..sort((a, b) {
-                                    final aLower = a.toLowerCase();
-                                    final bLower = b.toLowerCase();
-                                    final aStarts = aLower.startsWith(query) ? 0 : 1;
-                                    final bStarts = bLower.startsWith(query) ? 0 : 1;
-                                    return aStarts.compareTo(bStarts);
-                                  });
-                              }
-                            });
-                          },
-                          onSubmitted: (value) => addToSelected(value),
+        children: [
+          // Previous Items container
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(16)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Add item',
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          filled: true,
+                          fillColor: const Color(0xFF111111),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: BorderSide.none),
+                          prefixIcon:
+                              const Icon(Icons.search, color: Colors.cyan),
+                          suffixIcon: searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear,
+                                      color: Colors.white54),
+                                  onPressed: () {
+                                    searchController.clear();
+                                    setState(() =>
+                                        filteredPreviousItems = previousItems);
+                                  },
+                                )
+                              : null,
                         ),
+                        onChanged: (value) {
+                          setState(() {
+                            if (value.isEmpty) {
+                              filteredPreviousItems = previousItems;
+                            } else {
+                              final query = value.toLowerCase();
+                              filteredPreviousItems = previousItems
+                                  .where((item) =>
+                                      item.toLowerCase().contains(query))
+                                  .toList()
+                                ..sort((a, b) {
+                                  final aLower = a.toLowerCase();
+                                  final bLower = b.toLowerCase();
+                                  final aStarts =
+                                      aLower.startsWith(query) ? 0 : 1;
+                                  final bStarts =
+                                      bLower.startsWith(query) ? 0 : 1;
+                                  return aStarts.compareTo(bStarts);
+                                });
+                            }
+                          });
+                        },
+                        onSubmitted: (value) => addToSelected(value),
                       ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: () => addToSelected(searchController.text),
-                        icon: const Icon(Icons.add, color: Colors.black),
-                        label: const Text('Add', style: TextStyle(color: Colors.black)),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.cyan, shape: const StadiumBorder()),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Previous Items', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 140,
-                    child: filteredPreviousItems.isEmpty
-                        ? const Center(child: Text('No matching items', style: TextStyle(color: Colors.white38)))
-                        : ListView.builder(
-                            itemCount: filteredPreviousItems.length,
-                            itemBuilder: (context, i) {
-                              final itemName = filteredPreviousItems[i];
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                child: GestureDetector(
-                                  onTap: () => addToSelected(itemName), // Taps work
-                                  onLongPress: () => removeFromHistory(itemName),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    decoration: BoxDecoration(color: const Color(0xFF222222), borderRadius: BorderRadius.circular(30)),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(itemName, style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis),
-                                        ),
-                                        const Icon(Icons.swipe, size: 18, color: Colors.white38),
-                                      ],
-                                    ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => addToSelected(searchController.text),
+                      icon: const Icon(Icons.add, color: Colors.black),
+                      label: const Text('Add',
+                          style: TextStyle(color: Colors.black)),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyan,
+                          shape: const StadiumBorder()),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Text('Previous Items',
+                    style: TextStyle(color: Colors.white, fontSize: 16)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 140,
+                  child: filteredPreviousItems.isEmpty
+                      ? const Center(
+                          child: Text('No matching items',
+                              style: TextStyle(color: Colors.white38)))
+                      : ListView.builder(
+                          itemCount: filteredPreviousItems.length,
+                          itemBuilder: (context, i) {
+                            final itemName = filteredPreviousItems[i];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: GestureDetector(
+                                onTap: () => addToSelected(itemName),
+                                onLongPress: () => removeFromHistory(itemName),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 12),
+                                  decoration: BoxDecoration(
+                                      color: const Color(0xFF222222),
+                                      borderRadius: BorderRadius.circular(30)),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(itemName,
+                                            style: const TextStyle(
+                                                color: Colors.white70),
+                                            overflow: TextOverflow.ellipsis),
+                                      ),
+                                      const Icon(Icons.swipe,
+                                          size: 18, color: Colors.white38),
+                                    ],
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Selected Items', style: TextStyle(color: Colors.white, fontSize: 18)),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 200,
-                    child: selectedItems.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'Start adding items — your list saves automatically!',
-                              style: TextStyle(color: Colors.white54),
-                              textAlign: TextAlign.center,
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: selectedItems.length,
-                            itemBuilder: (context, i) => ListTile(
-                              title: Text(selectedItems[i]['item_name'] as String, style: const TextStyle(color: Colors.white)),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => removeSelected(i),
                               ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Selected Items + buttons + ad
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+                color: const Color(0xFF1A1A1A),
+                borderRadius: BorderRadius.circular(16)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Selected Items',
+                    style: TextStyle(color: Colors.white, fontSize: 18)),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 200,
+                  child: selectedItems.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Start adding items — your list saves automatically!',
+                            style: TextStyle(color: Colors.white54),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: selectedItems.length,
+                          itemBuilder: (context, i) => ListTile(
+                            title: Text(selectedItems[i]['item_name'] as String,
+                                style: const TextStyle(color: Colors.white)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => removeSelected(i),
                             ),
                           ),
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () => context.push('/referral'),
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A1A1A), side: const BorderSide(color: Colors.cyan)),
-                    child: const Text('Refer a Friend', style: TextStyle(color: Colors.cyan)),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: isLoading ? null : createListAndGo,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, shape: const StadiumBorder()),
-                    child: isLoading
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-                        : const Text('Ready to Shop', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(height: 20),
-
-                  if (_isBannerAdReady)
-                    Container(height: 90, alignment: Alignment.center, child: AdWidget(ad: _bannerAd))
-                  else
-                    Container(
+                        ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () => context.push('/referral'),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1A1A1A),
+                      side: const BorderSide(color: Colors.cyan)),
+                  child: const Text('Refer a Friend',
+                      style: TextStyle(color: Colors.cyan)),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: isLoading ? null : createListAndGo,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      shape: const StadiumBorder()),
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              color: Colors.black, strokeWidth: 2))
+                      : const Text('Ready to Shop',
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 20),
+                if (_isBannerAdReady)
+                  Container(
                       height: 90,
-                      color: const Color(0xFF111111),
                       alignment: Alignment.center,
-                      child: const Text('Loading ad...', style: TextStyle(color: Colors.white38)),
-                    ),
-                ],
-              ),
+                      child: AdWidget(ad: _bannerAd))
+                else
+                  Container(
+                    height: 90,
+                    color: const Color(0xFF111111),
+                    alignment: Alignment.center,
+                    child: const Text('Loading ad...',
+                        style: TextStyle(color: Colors.white38)),
+                  ),
+              ],
             ),
-          ],
-        ),
+          ),
+
+          // Extra space at bottom so keyboard doesn't hide the last button
+          SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 100),
+        ],
       ),
     );
   }

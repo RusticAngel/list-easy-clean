@@ -1,4 +1,4 @@
-package com.example.list_easy
+package com.rusticangel.list_easy
 
 import io.flutter.embedding.android.FlutterActivity
 

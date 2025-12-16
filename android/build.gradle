@@ -1,5 +1,16 @@
-// android/build.gradle   ← PROJECT-LEVEL (keep it tiny!)
-apply from: "variables.gradle"
+// android/build.gradle — PROJECT-LEVEL
+
+buildscript {
+    ext.kotlin_version = '2.1.0'                 // ← THIS LINE WAS MISSING
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.6.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
 
 allprojects {
     repositories {
@@ -17,5 +28,5 @@ subprojects {
 }
 
 tasks.register("clean", Delete) {
-    delete rootProject.layout.buildDirectory
+    delete rootProject.buildDir
 }
