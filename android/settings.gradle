@@ -18,9 +18,9 @@ pluginManagement {
 
 plugins {
     id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-    id "com.android.application" version "8.6.0" apply false        // ← FIXED: 8.6.0 (no more bundle crash)
-    id "org.jetbrains.kotlin.android" version "2.1.0" apply false
-    id "com.google.gms.google-services" version "4.3.8" apply false
+    id "com.android.application" version "8.9.1" apply false        // ← Updated to 8.9.1 (required for androidx.core:1.17.0 & browser:1.9.0)
+    id "org.jetbrains.kotlin.android" version "2.1.0" apply false   // ← Matches Kotlin 2.1.0 (recommended, removes warning)
+    id "com.google.gms.google-services" version "4.4.2" apply false // ← Updated to latest stable (Jan 2026)
 }
 
 include ":app"

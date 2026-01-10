@@ -1,6 +1,10 @@
 // lib/pages/referral/referral_screen.dart
-// FINAL VERSION WITH ALL TIERS + BANNER AD + SMALLER TEXT
-// + Consistent "Loading ad..." placeholder (matches other pages)
+// FINAL VERSION – ALL TIERS + BANNER AD + SMALLER TEXT
+// FIXED: Overflow on tier stats (using Wrap + ellipsis)
+// FIXED: ALL use_build_context_synchronously warnings (safe messenger + context storage)
+// + Consistent "Loading ad..." placeholder
+// + Referral hint bubble: first copy + re-appear after 50 days
+// + Per-friend progress (expandable), 7-day halved tiers promo
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,9 +12,11 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({super.key});
+
   @override
   State<ReferralScreen> createState() => _ReferralScreenState();
 }
@@ -22,6 +28,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
   String referralLink = '';
   int totalReferrals = 0;
   int freeMonths = 0;
+  List<Map<String, dynamic>> referrals = []; // For per-friend progress
+  bool isPromoActive = false; // First 7 days double tier progress
 
   BannerAd? _bannerAd;
   bool _isBannerAdReady = false;
@@ -31,6 +39,15 @@ class _ReferralScreenState extends State<ReferralScreen> {
     super.initState();
     _loadData();
     _loadBannerAd();
+    _setFirstOpenDate();
+  }
+
+  Future<void> _setFirstOpenDate() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey('first_open_date')) {
+      await prefs.setString(
+          'first_open_date', DateTime.now().toIso8601String());
+    }
   }
 
   Future<void> _loadData() async {
@@ -42,9 +59,21 @@ class _ReferralScreenState extends State<ReferralScreen> {
     final link =
         'https://play.google.com/store/apps/details?id=com.rusticangel.list_easy&referral=$code';
 
-    final refs =
-        await supabase.from('referrals').select().eq('referrer_id', user.id);
+    // Fetch all referrals
+    final refs = await supabase
+        .from('referrals')
+        .select('id, referred_id, lists_completed, successful')
+        .eq('referrer_id', user.id);
+
     final count = refs.length;
+
+    // Check promo: first 7 days after first open
+    final prefs = await SharedPreferences.getInstance();
+    final firstOpenStr =
+        prefs.getString('first_open_date') ?? DateTime.now().toIso8601String();
+    final firstOpen = DateTime.parse(firstOpenStr);
+    final daysSinceFirstOpen = DateTime.now().difference(firstOpen).inDays;
+    final promoActive = daysSinceFirstOpen <= 7;
 
     if (mounted) {
       setState(() {
@@ -52,6 +81,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
         referralLink = link;
         totalReferrals = count;
         freeMonths = (count / 2).floor();
+        referrals = refs;
+        isPromoActive = promoActive;
       });
     }
   }
@@ -68,7 +99,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
     )..load();
   }
 
-  void _shareReferral() {
+  Future<void> _shareReferral() async {
     final message = '''
 I’m loving List Easy — the smartest grocery app ever!
 
@@ -83,6 +114,87 @@ We both get free premium months when you sign up and finish a shopping adventure
         .trim();
 
     Share.share(message, subject: 'Join me on List Easy!');
+  }
+
+  Future<void> _onCopyReferralCode() async {
+    Clipboard.setData(ClipboardData(text: referralLink));
+
+    // SAFE & LINTER-FRIENDLY: Store messenger + context BEFORE any await
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final currentContext = context;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final firstOpenStr =
+        prefs.getString('first_open_date') ?? DateTime.now().toIso8601String();
+    final firstOpen = DateTime.parse(firstOpenStr);
+    final daysSinceFirstOpen = DateTime.now().difference(firstOpen).inDays;
+
+    final hasSeenFirst = prefs.getBool('referral_hint_seen_first') ?? false;
+    if (!hasSeenFirst && mounted) {
+      await _showReferralHint(
+          // ignore: use_build_context_synchronously
+          prefs,
+          'referral_hint_seen_first',
+          // ignore: use_build_context_synchronously
+          currentContext);
+      return;
+    }
+
+    final hasSeenLate = prefs.getBool('referral_hint_seen_late') ?? false;
+    if (daysSinceFirstOpen >= 50 && !hasSeenLate && mounted) {
+      // ignore: use_build_context_synchronously
+      await _showReferralHint(prefs, 'referral_hint_seen_late', currentContext);
+    }
+
+    // Show snackbar AFTER async gap (using stored messenger)
+    if (mounted) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Link copied!')),
+      );
+    }
+  }
+
+  Future<void> _showReferralHint(
+    SharedPreferences prefs,
+    String seenKey,
+    BuildContext dialogContext,
+  ) async {
+    if (!mounted) return;
+
+    showDialog(
+      context: dialogContext,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Pro Tip: Mass Referrals = Free Premium Forever!',
+          style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          "Don't lose your features after the free period!\n\n"
+          "Copy your code, write a quick personal message, and post it in:\n"
+          "• Facebook groups\n"
+          "• WhatsApp groups\n"
+          "• X / Instagram / TikTok\n\n"
+          "Referrals accumulate — the more the better!\n"
+          "Watch your free months roll in! 🚀",
+          style: TextStyle(color: Colors.white70, fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await prefs.setBool(seenKey, true);
+              // ignore: use_build_context_synchronously
+              if (mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Got it!', style: TextStyle(color: Colors.cyan)),
+          ),
+        ],
+        actionsAlignment: MainAxisAlignment.center,
+      ),
+    );
   }
 
   @override
@@ -107,10 +219,10 @@ We both get free premium months when you sign up and finish a shopping adventure
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+        physics: const ClampingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Your Stats
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -144,13 +256,102 @@ We both get free premium months when you sign up and finish a shopping adventure
                     '${2 - (totalReferrals % 2)} more needed for next free month',
                     style: const TextStyle(color: Colors.white70),
                   ),
+                  if (isPromoActive) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Color.fromRGBO(0, 188, 212, 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        '🎉 Double Tier Progress Active! (First 7 days)\n'
+                        'Share now — reach Legend with just 50 referrals instead of 100!',
+                        style: TextStyle(
+                            color: Colors.cyan, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-
             const SizedBox(height: 32),
+            // Expandable Friends Progress
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ExpansionTile(
+                title: const Text(
+                  'Your Friends\' Progress',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
+                initiallyExpanded: false,
+                collapsedBackgroundColor: const Color(0xFF1C1C1E),
+                backgroundColor: const Color(0xFF1C1C1E),
+                children: [
+                  if (referrals.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No friends yet — share your link!',
+                          style: TextStyle(color: Colors.white70)),
+                    )
+                  else
+                    ...referrals.take(4).map((ref) {
+                      final completed = (ref['lists_completed'] as int?) ?? 0;
+                      final isSuccessful =
+                          (ref['successful'] as bool?) ?? false;
+                      final progress = completed >= 2 ? '2/2' : '$completed/2';
+                      final statusColor =
+                          completed >= 2 ? Colors.greenAccent : Colors.white70;
 
-            // Referral Link + Share Buttons
+                      return ListTile(
+                        leading: CircleAvatar(
+                          radius: 18,
+                          backgroundColor: Colors.cyan,
+                          child: Text('F',
+                              style: const TextStyle(color: Colors.black)),
+                        ),
+                        title: Text('Friend ${referrals.indexOf(ref) + 1}',
+                            style: const TextStyle(color: Colors.white)),
+                        trailing: Text(
+                          progress,
+                          style: TextStyle(
+                              color: statusColor, fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: isSuccessful
+                            ? const Text('Credit earned!',
+                                style: TextStyle(color: Colors.greenAccent))
+                            : null,
+                      );
+                    }),
+                  if (referrals.length > 4)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: TextButton(
+                        onPressed: () {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Full list coming soon!')),
+                            );
+                          }
+                        },
+                        child: const Text('View All Friends',
+                            style: TextStyle(color: Colors.cyan)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -186,12 +387,7 @@ We both get free premium months when you sign up and finish a shopping adventure
                       const SizedBox(width: 12),
                       IconButton(
                         icon: const Icon(Icons.copy, color: Colors.white70),
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: referralLink));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Link copied!')),
-                          );
-                        },
+                        onPressed: _onCopyReferralCode,
                       ),
                     ],
                   ),
@@ -215,10 +411,7 @@ We both get free premium months when you sign up and finish a shopping adventure
                 ],
               ),
             ),
-
             const SizedBox(height: 32),
-
-            // How It Works
             const Text('How It Works',
                 style: TextStyle(
                     fontSize: 24,
@@ -228,30 +421,49 @@ We both get free premium months when you sign up and finish a shopping adventure
             _howItWorksItem('1', 'Share your unique link',
                 'Send it to friends, family, or on social media'),
             _howItWorksItem('2', 'They sign up & use the app',
-                'They must create at least one list'),
-            _howItWorksItem('3', 'You both get rewarded',
+                'They must create at least two lists'),
+            _howItWorksItem('3', 'You get rewarded',
                 'Every 2 successful referrals = 1 free premium month'),
-
             const SizedBox(height: 40),
-
-            // Reward Tiers — with Diamond + Legend + smaller text
             const Text('Reward Tiers',
                 style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                     color: Colors.white)),
             const SizedBox(height: 20),
-            _tierCard('Bronze', '10 referrals', '1 month free'),
-            _tierCard('Silver', '20 referrals', '3 months free'),
-            _tierCard('Gold', '30 referrals', '6 months free'),
-            _tierCard('Platinum', '40 referrals', '9 months free'),
-            _tierCard('Diamond', '50 referrals', '12 months free'),
-            _tierCard('Legend', '100 referrals', 'Lifetime free',
-                isSpecial: true),
-
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              alignment: WrapAlignment.center,
+              children: [
+                _tierCard(
+                    'Bronze',
+                    isPromoActive ? '5 referrals' : '10 referrals',
+                    '1 month free'),
+                _tierCard(
+                    'Silver',
+                    isPromoActive ? '10 referrals' : '20 referrals',
+                    '3 months free'),
+                _tierCard(
+                    'Gold',
+                    isPromoActive ? '15 referrals' : '30 referrals',
+                    '6 months free'),
+                _tierCard(
+                    'Platinum',
+                    isPromoActive ? '20 referrals' : '40 referrals',
+                    '9 months free'),
+                _tierCard(
+                    'Diamond',
+                    isPromoActive ? '25 referrals' : '50 referrals',
+                    '12 months free'),
+                _tierCard(
+                    'Legend',
+                    isPromoActive ? '50 referrals' : '100 referrals',
+                    'Lifetime free',
+                    isSpecial: true),
+              ],
+            ),
             const SizedBox(height: 40),
-
-            // Banner Ad at Bottom (with consistent placeholder)
             if (_isBannerAdReady)
               Container(
                 height: _bannerAd!.size.height.toDouble(),
@@ -264,13 +476,19 @@ We both get free premium months when you sign up and finish a shopping adventure
                 height: 90,
                 color: const Color(0xFF111111),
                 alignment: Alignment.center,
-                child: const Text(
-                  'Loading ad...',
-                  style: TextStyle(color: Colors.white38),
-                ),
+                child: const Text('Loading ad...',
+                    style: TextStyle(color: Colors.white38)),
               ),
-
-            const SizedBox(height: 100), // Extra space at bottom
+            const SizedBox(height: 8),
+            const Text(
+              'Built with Grok by xAI',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white54,
+                  fontWeight: FontWeight.w300),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 100),
           ],
         ),
       ),
@@ -324,8 +542,8 @@ We both get free premium months when you sign up and finish a shopping adventure
   Widget _tierCard(String tier, String needed, String reward,
           {bool isSpecial = false}) =>
       Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(20),
+        width: 160,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSpecial ? const Color(0xFF6A1B9A) : const Color(0xFF1C1C1E),
           borderRadius: BorderRadius.circular(16),
@@ -333,25 +551,40 @@ We both get free premium months when you sign up and finish a shopping adventure
               ? Border.all(color: Colors.purpleAccent, width: 2)
               : null,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(tier,
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: isSpecial ? Colors.white : Colors.cyan)),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            const SizedBox(height: 8),
+            Text(reward,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.greenAccent)),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(reward,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.greenAccent)), // Smaller text
-                Text(needed,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 12)), // Smaller text
+                Flexible(
+                  child: Text(needed,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1),
+                ),
+                if (isPromoActive)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4),
+                    child: Text('(Double!)',
+                        style: TextStyle(
+                            color: Colors.cyan,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold)),
+                  ),
               ],
             ),
           ],

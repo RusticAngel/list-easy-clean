@@ -1,14 +1,29 @@
-// android/build.gradle — PROJECT-LEVEL
+// android/build.gradle — PROJECT-LEVEL build file
+// Updated January 2026 — Clean, stable, AGP 8.9.1 + Kotlin 2.1.0 recommended
 
 buildscript {
-    ext.kotlin_version = '2.1.0'                 // ← THIS LINE WAS MISSING
+    // You can gradually migrate to plugins {} block in settings.gradle later
+    ext {
+        kotlin_version = '2.1.0'   // ← Updated — recommended minimum now
+                                   // 2.0.20 support is being dropped soon by Flutter
+    }
+
     repositories {
         google()
         mavenCentral()
     }
+
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.6.0'
+        // Android Gradle Plugin — 8.9.1 fixes the AAR metadata issues with recent AndroidX libs
+        classpath 'com.android.tools.build:gradle:8.9.1'
+
+        // Kotlin Gradle plugin — matches kotlin_version above
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+
+        // Uncomment if you use these common plugins:
+        // classpath 'com.google.gms:google-services:4.4.2'           // Firebase
+        // classpath 'com.google.firebase:crashlytics-gradle:3.0.2'   // Crashlytics
+        // classpath 'com.google.android.libraries.mapsplatform.secrets-gradle-plugin:secrets-gradle-plugin:2.0.1'
     }
 }
 
@@ -16,17 +31,19 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Only add these if you really need them (most Flutter projects don't):
+        // maven { url 'https://jitpack.io' }
     }
 }
 
+// Flutter/Android standard directory structure
 rootProject.buildDir = '../build'
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-}
-subprojects {
     project.evaluationDependsOn(':app')
 }
 
+// Standard clean task
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
