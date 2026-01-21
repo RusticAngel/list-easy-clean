@@ -4,6 +4,7 @@
 // + Graceful offline handling + OneSignal tag + KEYBOARD FIX
 // FIXED: Removed unwanted auto-scroll (no tutorial needed)
 // + Single Add Item button + Swipe-to-delete + All items visible
+// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding, compact density (inspired by clean screenshot style)
 
 import 'dart:async';
 import 'dart:convert';
@@ -55,7 +56,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startTutorialIfNeeded();
-      // Auto-scroll removed permanently as requested
     });
   }
 
@@ -319,13 +319,13 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         title: const Text('Creating my list',
             style: TextStyle(
                 color: Colors.white,
-                fontSize: 24,
+                fontSize: 20, // Reduced from 24
                 fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: ListView(
         controller: _scrollController,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12), // Reduced from 16
         physics: const ClampingScrollPhysics(),
         children: [
           Showcase(
@@ -335,13 +335,13 @@ class _CreatingWidgetState extends State<CreatingWidget> {
             overlayColor: Colors.black.withAlpha(204),
             tooltipBackgroundColor: const Color(0xFF2A2A2A),
             titleTextStyle: const TextStyle(
-                color: Colors.cyan, fontSize: 20, fontWeight: FontWeight.bold),
-            descTextStyle: const TextStyle(color: Colors.white, fontSize: 16),
+                color: Colors.cyan, fontSize: 18, fontWeight: FontWeight.bold),
+            descTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
             child: Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16), // Reduced from 20
               decoration: BoxDecoration(
                   color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(12)), // Reduced radius
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -354,7 +354,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                           description: "Type to search or add new items",
                           child: TextField(
                             controller: searchController,
-                            style: const TextStyle(color: Colors.white),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 15),
                             decoration: _inputDecoration('Add item'),
                             onChanged: (value) {
                               setState(() {
@@ -382,51 +383,59 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8), // Reduced from 12
                       Showcase(
                         key: _addButtonKey,
                         title: "Tap to add",
                         description: "Or press Enter — quick!",
                         child: ElevatedButton.icon(
                           onPressed: () => addToSelected(searchController.text),
-                          icon: const Icon(Icons.add, color: Colors.black),
+                          icon: const Icon(Icons.add,
+                              color: Colors.black, size: 18),
                           label: const Text('Add',
-                              style: TextStyle(color: Colors.black)),
+                              style:
+                                  TextStyle(color: Colors.black, fontSize: 14)),
                           style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.cyan,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
                               shape: const StadiumBorder()),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12), // Reduced from 20
                   const Text('Previous Items',
-                      style: TextStyle(color: Colors.white, fontSize: 16)),
-                  const SizedBox(height: 8),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14)), // Reduced from 16
+                  const SizedBox(height: 6), // Reduced from 8
                   SizedBox(
-                    height: 140,
+                    height: 120, // Slightly reduced height for density
                     child: filteredPreviousItems.isEmpty
                         ? const Center(
                             child: Text('No matching items',
-                                style: TextStyle(color: Colors.white38)))
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 14)))
                         : ListView.builder(
                             itemCount: filteredPreviousItems.length,
                             itemBuilder: (context, i) {
                               final itemName = filteredPreviousItems[i];
                               return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 3), // Reduced from 4
                                 child: GestureDetector(
                                   onTap: () => addToSelected(itemName),
                                   onLongPress: () =>
                                       removeFromHistory(itemName),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 20, vertical: 12),
+                                        horizontal: 16,
+                                        vertical: 10), // Reduced padding
                                     decoration: BoxDecoration(
                                         color: const Color(0xFF222222),
                                         borderRadius:
-                                            BorderRadius.circular(30)),
+                                            BorderRadius.circular(24)),
                                     child: Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceBetween,
@@ -434,9 +443,10 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                                         Expanded(
                                             child: Text(itemName,
                                                 style: const TextStyle(
-                                                    color: Colors.white70))),
+                                                    color: Colors.white70,
+                                                    fontSize: 14))),
                                         const Icon(Icons.swipe,
-                                            size: 18, color: Colors.white38),
+                                            size: 16, color: Colors.white38),
                                       ],
                                     ),
                                   ),
@@ -449,7 +459,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12), // Reduced from 20
           Showcase(
             key: _selectedSectionKey,
             title: "Your shopping list",
@@ -458,24 +468,27 @@ class _CreatingWidgetState extends State<CreatingWidget> {
             overlayColor: Colors.black.withAlpha(204),
             tooltipBackgroundColor: const Color(0xFF2A2A2A),
             titleTextStyle: const TextStyle(
-                color: Colors.cyan, fontSize: 20, fontWeight: FontWeight.bold),
-            descTextStyle: const TextStyle(color: Colors.white, fontSize: 16),
+                color: Colors.cyan, fontSize: 18, fontWeight: FontWeight.bold),
+            descTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
             child: Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16), // Reduced from 20
               decoration: BoxDecoration(
                   color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(12)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Selected Items',
-                      style: TextStyle(color: Colors.white, fontSize: 18)),
-                  const SizedBox(height: 12),
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16)), // Reduced from 18
+                  const SizedBox(height: 8), // Reduced from 12
                   selectedItems.isEmpty
                       ? const Center(
                           child: Text(
                               'Start adding items — saves automatically!',
-                              style: TextStyle(color: Colors.white54)))
+                              style: TextStyle(
+                                  color: Colors.white54, fontSize: 14)))
                       : ListView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
@@ -488,25 +501,27 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                               background: Container(
                                 color: Colors.red,
                                 alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 20),
+                                padding: const EdgeInsets.only(right: 16),
                                 child: const Icon(Icons.delete,
-                                    color: Colors.white),
+                                    color: Colors.white, size: 20),
                               ),
                               onDismissed: (_) => removeSelected(i),
                               child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 4, horizontal: 0),
                                 title: Text(item['item_name'] as String,
-                                    style:
-                                        const TextStyle(color: Colors.white)),
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 15)),
                                 trailing: IconButton(
                                   icon: const Icon(Icons.delete,
-                                      color: Colors.red),
+                                      color: Colors.red, size: 20),
                                   onPressed: () => removeSelected(i),
                                 ),
                               ),
                             );
                           },
                         ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16), // Reduced from 20
                   Row(
                     children: [
                       Expanded(
@@ -518,13 +533,16 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                             onPressed: () => context.push('/referral'),
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF1A1A1A),
-                                side: const BorderSide(color: Colors.cyan)),
+                                side: const BorderSide(color: Colors.cyan),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12)),
                             child: const Text('Refer a Friend',
-                                style: TextStyle(color: Colors.cyan)),
+                                style: TextStyle(
+                                    color: Colors.cyan, fontSize: 14)),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8), // Reduced from 12
                       Expanded(
                         child: Showcase(
                           key: _readyButtonKey,
@@ -534,28 +552,34 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                             onPressed: isLoading ? null : createListAndGo,
                             style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 shape: const StadiumBorder()),
                             child: isLoading
                                 ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
+                                    height: 18,
+                                    width: 18,
                                     child: CircularProgressIndicator(
                                         color: Colors.black, strokeWidth: 2))
                                 : const Text('Ready to Shop',
                                     style: TextStyle(
                                         color: Colors.black,
-                                        fontWeight: FontWeight.bold)),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14)),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16), // Reduced from 20
                   if (_isBannerAdReady)
-                    SizedBox(height: 90, child: AdWidget(ad: _bannerAd))
+                    SizedBox(
+                        height: 80,
+                        child:
+                            AdWidget(ad: _bannerAd)) // Slightly reduced height
                   else
                     Container(
-                        height: 90,
+                        height: 80,
                         color: const Color(0xFF111111),
                         alignment: Alignment.center,
                         child: const Text('Loading ad...',
@@ -563,7 +587,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                   const SizedBox(height: 8),
                   const Text('Built with Grok by xAI',
                       style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           color: Colors.white54,
                           fontWeight: FontWeight.w300),
                       textAlign: TextAlign.center),
@@ -571,7 +595,9 @@ class _CreatingWidgetState extends State<CreatingWidget> {
               ),
             ),
           ),
-          SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 100),
+          SizedBox(
+              height: MediaQuery.of(context).viewInsets.bottom +
+                  80), // Reduced bottom padding
         ],
       ),
     );
@@ -579,24 +605,24 @@ class _CreatingWidgetState extends State<CreatingWidget> {
 
   InputDecoration _inputDecoration(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white54),
+        hintStyle: const TextStyle(color: Colors.white54, fontSize: 14),
         filled: true,
         fillColor: const Color(0xFF111111),
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(30),
+            borderRadius: BorderRadius.circular(28), // Slightly smaller radius
             borderSide: BorderSide.none),
-        prefixIcon: const Icon(Icons.search, color: Colors.cyan),
+        prefixIcon: const Icon(Icons.search, color: Colors.cyan, size: 20),
         suffixIcon: searchController.text.isNotEmpty
             ? IconButton(
-                icon: const Icon(Icons.clear, color: Colors.white54),
+                icon: const Icon(Icons.clear, color: Colors.white54, size: 20),
                 onPressed: () {
                   searchController.clear();
                   setState(() => filteredPreviousItems = previousItems);
                 },
               )
             : null,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 12), // Reduced padding
       );
 
   @override

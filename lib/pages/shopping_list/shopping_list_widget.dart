@@ -4,6 +4,8 @@
 // + Price editing improved + Total with 2 decimals
 // UPDATED: Single Add Item button + Swipe-to-delete + All items visible
 // + Tutorial (continues from creating, first launch only, smart scroll)
+// NEW: Global currency auto-detection + price input validation (max 9,999,999.99)
+// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding, compact density (inspired by clean screenshot style)
 
 import 'dart:async';
 import 'dart:convert';
@@ -14,8 +16,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:showcaseview/showcaseview.dart';
-
-import '../../services/currency_service.dart';
+import 'package:intl/intl.dart'; // For currency formatting
 
 class ShoppingListWidget extends StatefulWidget {
   final int? listId;
@@ -51,10 +52,17 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   final GlobalKey _priceKey = GlobalKey();
   final GlobalKey _finishButtonKey = GlobalKey();
 
+  // Cache device locale for currency formatting
+  String _deviceLocale = 'en_US'; // Default fallback
+
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+
+    // Get device locale once for consistent formatting
+    // ignore: deprecated_member_use
+    _deviceLocale = WidgetsBinding.instance.window.locale.toString();
 
     _loadList();
     _loadBannerAd();
@@ -200,6 +208,21 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   Future<void> updatePrice(int index, double newPrice) async {
     final item = items[index];
 
+    // Validate max price
+    const double maxPrice = 9999999.99;
+    if (newPrice > maxPrice) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Price cannot exceed ${NumberFormat.simpleCurrency(locale: _deviceLocale).format(maxPrice)}',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     if (widget.isOffline) {
       setState(() => item['price'] = newPrice);
       await _saveCurrentListToJson();
@@ -224,21 +247,26 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                 (item['quantity'] as int? ?? 1),
       );
 
+  String formatPrice(double price) {
+    final formatter = NumberFormat.simpleCurrency(locale: _deviceLocale);
+    return formatter.format(price);
+  }
+
   Widget _qtyBtn(VoidCallback onTap, String text) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 28,
-        height: 28,
+        width: 24, // Smaller for compact look
+        height: 24,
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.white54),
+          border: Border.all(color: Colors.white38, width: 1),
           borderRadius: BorderRadius.circular(6),
         ),
         alignment: Alignment.center,
         child: Text(
           text,
           style: const TextStyle(
-              fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+              fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -265,10 +293,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
       await Share.share(
         'Check out my shopping list on List Easy!\n'
-        'Total: ${CurrencyService.instance.symbol}${total.toStringAsFixed(2)}\n\n'
+        'Total: ${formatPrice(total)}\n\n'
         '$shareLink',
-        subject:
-            'My Shopping List - ${CurrencyService.instance.symbol}${total.toStringAsFixed(2)}',
+        subject: 'My Shopping List - ${formatPrice(total)}',
       );
     } catch (e) {
       if (mounted) {
@@ -377,8 +404,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final currency = CurrencyService.instance;
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -388,14 +413,14 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         title: Text(
           widget.isOffline ? 'Offline Shopping List' : 'Your Shopping List',
           style: const TextStyle(
-              color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
+              color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
         actions: widget.isOffline
             ? null
             : [
                 IconButton(
-                  icon: const Icon(Icons.share, color: Colors.cyan),
+                  icon: const Icon(Icons.share, color: Colors.cyan, size: 22),
                   tooltip: 'Share this list',
                   onPressed: _shareList,
                 ),
@@ -406,15 +431,15 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           : SingleChildScrollView(
               child: Column(
                 children: [
-                  // Items List - All visible
+                  // Items List - Tighter padding
                   Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(16), // Reduced from 20
                     child: items.isEmpty
                         ? const Center(
                             child: Text(
                               'No items yet — add from the previous screen!',
                               style: TextStyle(
-                                  color: Colors.white54, fontSize: 18),
+                                  color: Colors.white54, fontSize: 16),
                               textAlign: TextAlign.center,
                             ),
                           )
@@ -437,9 +462,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                 background: Container(
                                   color: Colors.red,
                                   alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 20),
+                                  padding: const EdgeInsets.only(right: 16),
                                   child: const Icon(Icons.delete,
-                                      color: Colors.white),
+                                      color: Colors.white, size: 20),
                                 ),
                                 onDismissed: (_) {
                                   setState(() {
@@ -448,9 +473,11 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                   _saveCurrentListToJson();
                                 },
                                 child: Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 6), // Reduced from 8
                                   child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
                                     children: [
                                       if (i == 0)
                                         Showcase(
@@ -463,7 +490,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                             activeColor: Colors.white,
                                             checkColor: Colors.black,
                                             side: const BorderSide(
-                                                color: Colors.white54),
+                                                color: Colors.white38),
                                             onChanged: (_) => toggleChecked(i),
                                           ),
                                         )
@@ -473,15 +500,16 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                           activeColor: Colors.white,
                                           checkColor: Colors.black,
                                           side: const BorderSide(
-                                              color: Colors.white54),
+                                              color: Colors.white38),
                                           onChanged: (_) => toggleChecked(i),
                                         ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(
+                                          width: 8), // Reduced from 12
                                       Expanded(
                                         child: Text(
                                           name,
                                           style: TextStyle(
-                                            fontSize: 17,
+                                            fontSize: 15, // Reduced from 17
                                             color: checked
                                                 ? Colors.white38
                                                 : Colors.white,
@@ -507,13 +535,14 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                             _qtyBtn(() => updateQuantity(i, -1),
                                                 '–'),
                                           Container(
-                                            width: 44,
+                                            width: 36, // Reduced from 44
                                             alignment: Alignment.center,
                                             child: Text(
                                               '$qty',
                                               style: const TextStyle(
                                                   color: Colors.white70,
-                                                  fontSize: 17,
+                                                  fontSize:
+                                                      14, // Reduced from 17
                                                   fontWeight: FontWeight.bold),
                                             ),
                                           ),
@@ -521,7 +550,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                               () => updateQuantity(i, 1), '+'),
                                         ],
                                       ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(
+                                          width: 8), // Reduced from 12
                                       if (i == 0)
                                         Showcase(
                                           key: _priceKey,
@@ -559,7 +589,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                                     decoration:
                                                         const InputDecoration(
                                                             hintText:
-                                                                'Enter amount (e.g. 40.95)'),
+                                                                'Enter amount (e.g. 40.95)',
+                                                            hintStyle: TextStyle(
+                                                                color: Colors
+                                                                    .white54)),
                                                   ),
                                                   actions: [
                                                     TextButton(
@@ -576,6 +609,20 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                                             double.tryParse(
                                                                 controller
                                                                     .text);
+                                                        if (parsed != null &&
+                                                            parsed >
+                                                                9999999.99) {
+                                                          ScaffoldMessenger.of(
+                                                                  context)
+                                                              .showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                'Price cannot exceed ${formatPrice(9999999.99)}',
+                                                              ),
+                                                            ),
+                                                          );
+                                                          return;
+                                                        }
                                                         Navigator.pop(
                                                             ctx, parsed ?? 0.0);
                                                       },
@@ -593,10 +640,11 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                               }
                                             },
                                             child: Text(
-                                              '${currency.symbol}${price.toStringAsFixed(2)}',
+                                              formatPrice(price),
                                               style: const TextStyle(
                                                   color: Colors.white70,
-                                                  fontSize: 17),
+                                                  fontSize:
+                                                      15), // Reduced from 17
                                             ),
                                           ),
                                         )
@@ -631,7 +679,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                                   autofocus: true,
                                                   decoration: const InputDecoration(
                                                       hintText:
-                                                          'Enter amount (e.g. 40.95)'),
+                                                          'Enter amount (e.g. 40.95)',
+                                                      hintStyle: TextStyle(
+                                                          color:
+                                                              Colors.white54)),
                                                 ),
                                                 actions: [
                                                   TextButton(
@@ -647,6 +698,19 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                                       final parsed =
                                                           double.tryParse(
                                                               controller.text);
+                                                      if (parsed != null &&
+                                                          parsed > 9999999.99) {
+                                                        ScaffoldMessenger.of(
+                                                                context)
+                                                            .showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              'Price cannot exceed ${formatPrice(9999999.99)}',
+                                                            ),
+                                                          ),
+                                                        );
+                                                        return;
+                                                      }
                                                       Navigator.pop(
                                                           ctx, parsed ?? 0.0);
                                                     },
@@ -664,10 +728,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                             }
                                           },
                                           child: Text(
-                                            '${currency.symbol}${price.toStringAsFixed(2)}',
+                                            formatPrice(price),
                                             style: const TextStyle(
                                                 color: Colors.white70,
-                                                fontSize: 17),
+                                                fontSize: 15),
                                           ),
                                         ),
                                     ],
@@ -677,26 +741,28 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                             },
                           ),
                   ),
-                  // Grand Total
+                  // Grand Total - Tighter container
                   Container(
-                    margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                    padding: const EdgeInsets.all(20),
+                    margin: const EdgeInsets.fromLTRB(
+                        16, 16, 16, 0), // Reduced margins
+                    padding: const EdgeInsets.all(16), // Reduced padding
                     decoration: BoxDecoration(
                       color: const Color(0xFF1C1C1E),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                          BorderRadius.circular(12), // Slightly smaller radius
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text('Grand Total:',
                             style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 16, // Reduced from 18
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white)),
                         Text(
-                          '${currency.symbol}${total.toStringAsFixed(2)}',
+                          formatPrice(total),
                           style: const TextStyle(
-                              fontSize: 20,
+                              fontSize: 18, // Reduced from 20
                               fontWeight: FontWeight.bold,
                               color: Colors.white),
                         ),
@@ -704,14 +770,14 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16), // Reduced from 24
 
-                  // Single Add Item button
+                  // Add Item button - Slightly smaller
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: SizedBox(
                       width: double.infinity,
-                      height: 56,
+                      height: 50, // Reduced from 56
                       child: ElevatedButton.icon(
                         onPressed: () async {
                           final controller = TextEditingController();
@@ -765,11 +831,13 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                             await _saveCurrentListToJson();
                           }
                         },
-                        icon: const Icon(Icons.add, color: Colors.black),
+                        icon: const Icon(Icons.add,
+                            color: Colors.black, size: 20),
                         label: const Text('Add Item',
                             style: TextStyle(
                                 color: Colors.black,
-                                fontWeight: FontWeight.bold)),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
                         style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.cyan,
                             shape: const StadiumBorder()),
@@ -777,13 +845,13 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16), // Reduced from 24
 
-                  // Finish button
+                  // Finish button - Slightly smaller
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                     child: SizedBox(
-                      height: 56,
+                      height: 50, // Reduced from 56
                       width: double.infinity,
                       child: Showcase(
                         key: _finishButtonKey,
@@ -806,9 +874,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                         fontWeight: FontWeight.bold),
                                     textAlign: TextAlign.center),
                                 content: Text(
-                                    'Your total: ${currency.symbol}${total.toStringAsFixed(2)}',
+                                    'Your total: ${formatPrice(total)}',
                                     style: const TextStyle(
-                                        color: Colors.white, fontSize: 20),
+                                        color: Colors.white, fontSize: 18),
                                     textAlign: TextAlign.center),
                                 actions: [
                                   Center(
@@ -836,22 +904,24 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                           child: const Text('Finish',
                               style: TextStyle(
                                   color: Colors.black,
-                                  fontSize: 17,
+                                  fontSize: 16, // Reduced from 17
                                   fontWeight: FontWeight.w600)),
                         ),
                       ),
                     ),
                   ),
 
-                  // Banner ad
+                  // Banner ad - Keep height but reduce margin
                   if (_isBannerAdReady)
                     Container(
                         height: 100,
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
                         alignment: Alignment.center,
                         child: AdWidget(ad: _bannerAd))
                   else
                     Container(
                         height: 100,
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
                         color: const Color(0xFF111111),
                         alignment: Alignment.center,
                         child: const Text('Loading ad...',
@@ -861,7 +931,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
                   const Text('Built with Grok by xAI',
                       style: TextStyle(
-                          fontSize: 11,
+                          fontSize: 10, // Slightly smaller
                           color: Colors.white54,
                           fontWeight: FontWeight.w300),
                       textAlign: TextAlign.center),
