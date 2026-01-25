@@ -15,8 +15,8 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def flutterVersionCode = 6
-def flutterVersionName = "1.0.5"
+def flutterVersionCode = 7
+def flutterVersionName = "1.0.6"
 
 android {
     namespace "com.rusticangel.list_easy"

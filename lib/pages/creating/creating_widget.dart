@@ -1,20 +1,33 @@
 // lib/pages/creating/creating_widget.dart
 // FINAL + TAP REMOVES ITEM + SMART SEARCH + FREQUENCY SORT + FULL OFFLINE SUPPORT
-// + Persist in-progress creation to JSON + Load on open + Clear on success
+// + Persist in-progress creation to JSON file (reliable instant save)
+// + Load on open + Clear on success
 // + Graceful offline handling + OneSignal tag + KEYBOARD FIX
-// FIXED: Removed unwanted auto-scroll (no tutorial needed)
+// FIXED: Removed unwanted auto-scroll
 // + Single Add Item button + Swipe-to-delete + All items visible
-// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding, compact density (inspired by clean screenshot style)
+// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding
+// FIXED: Draft popup uses correct file
+// FIXED: Safe draft loading & rendering → no more null crashes
+// FIXED: Continue now simply navigates to ShoppingList (draft loads from file)
+// FIXED: Discard clears draft file and keeps user on fresh Creating page
+// IMPROVED: File-based persistence (path_provider) for crash-proof saving
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:showcaseview/showcaseview.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter/scheduler.dart';
+
+import 'package:list_easy/pages/shopping_list/shopping_list_widget.dart';
 
 class CreatingWidget extends StatefulWidget {
   const CreatingWidget({super.key});
@@ -35,8 +48,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   late BannerAd _bannerAd;
   bool _isBannerAdReady = false;
 
-  static const String _offlineCreationKey = 'offline_current_list_creation';
-
   late ScrollController _scrollController;
 
   final GlobalKey _searchKey = GlobalKey();
@@ -46,6 +57,12 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   final GlobalKey _referButtonKey = GlobalKey();
   final GlobalKey _readyButtonKey = GlobalKey();
 
+  // File path for draft persistence (crash-resistant)
+  Future<String> get _draftFilePath async {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}/offline_current_list.json';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,9 +71,115 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     _loadEverything();
     _loadBannerAd();
 
+    _checkForUnfinishedDraft();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startTutorialIfNeeded();
     });
+  }
+
+  Future<void> _checkForUnfinishedDraft() async {
+    final file = File(await _draftFilePath);
+    if (!await file.exists()) return;
+
+    String jsonString;
+    try {
+      jsonString = await file.readAsString();
+    } catch (_) {
+      return;
+    }
+
+    if (jsonString.isEmpty || jsonString == '[]') return;
+
+    List<dynamic> decoded;
+    try {
+      decoded = jsonDecode(jsonString);
+      if (decoded.isEmpty) return;
+    } catch (_) {
+      return;
+    }
+
+    final loadedItems = decoded.map<Map<String, dynamic>>((dynamic raw) {
+      final item = raw as Map<String, dynamic>? ?? {};
+      final name = (item['item_name'] as String?) ??
+          (item['name'] as String?) ??
+          'Unnamed Item';
+      return {
+        'item_name': name,
+        'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
+        'price': (item['price'] as num?)?.toDouble() ?? 0.0,
+        ...item,
+      };
+    }).toList();
+
+    double total = 0.0;
+    for (var item in loadedItems) {
+      total += (item['price'] as double) * (item['quantity'] as int);
+    }
+
+    if (!mounted) return;
+
+    final formatter = NumberFormat.simpleCurrency(
+      locale: WidgetsBinding.instance.platformDispatcher.locale.toString(),
+    );
+
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Unfinished Shopping List',
+            style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+        content: Text(
+          'You have an unfinished list (total ${formatter.format(total)}).\n\n'
+          'Continue shopping or start fresh?',
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'discard'),
+            child:
+                const Text('Discard', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, 'continue'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyan),
+            child:
+                const Text('Continue', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (choice == 'discard') {
+      if (await file.exists()) await file.delete();
+      if (mounted) {
+        setState(() => selectedItems = []);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Draft discarded — starting fresh')),
+        );
+      }
+    } else if (choice == 'continue') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Resuming your list...'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const ShoppingListWidget()),
+        );
+      });
+    }
   }
 
   Future<void> _startTutorialIfNeeded() async {
@@ -106,7 +229,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
           setState(() {
             selectedItems = (draft?['items'] as List?)
                     ?.map((item) => {
-                          'item_name': item['item_name'] as String,
+                          'item_name':
+                              item['item_name'] as String? ?? 'Unnamed',
                           'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
                         })
                     .toList() ??
@@ -117,7 +241,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         await _saveCreationToJson();
         return;
       }
-    } catch (e) {
+    } catch (_) {
       // Offline fallback
     }
 
@@ -130,18 +254,38 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   }
 
   Future<void> _loadPersistedCreation() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString(_offlineCreationKey);
-    if (jsonString != null) {
-      try {
-        final List<dynamic> decoded = jsonDecode(jsonString);
-        selectedItems = decoded.cast<Map<String, dynamic>>();
-      } catch (e) {
-        selectedItems = [];
-      }
-    } else {
+    final file = File(await _draftFilePath);
+    if (!await file.exists()) {
+      selectedItems = [];
+      return;
+    }
+
+    String jsonString;
+    try {
+      jsonString = await file.readAsString();
+    } catch (_) {
+      selectedItems = [];
+      return;
+    }
+
+    if (jsonString.isEmpty || jsonString == '[]') {
+      selectedItems = [];
+      return;
+    }
+
+    try {
+      final List<dynamic> decoded = jsonDecode(jsonString);
+      selectedItems = decoded.map<Map<String, dynamic>>((dynamic raw) {
+        final item = raw as Map<String, dynamic>? ?? {};
+        return {
+          'item_name': (item['item_name'] as String?) ?? 'Unnamed Item',
+          'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
+        };
+      }).toList();
+    } catch (_) {
       selectedItems = [];
     }
+
     if (mounted) {
       setState(() {
         filteredPreviousItems = previousItems;
@@ -150,14 +294,21 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   }
 
   Future<void> _saveCreationToJson() async {
-    final prefs = await SharedPreferences.getInstance();
+    final file = File(await _draftFilePath);
     final jsonString = jsonEncode(selectedItems);
-    await prefs.setString(_offlineCreationKey, jsonString);
+
+    try {
+      await file.writeAsString(jsonString, mode: FileMode.write);
+    } catch (_) {
+      // Silent in production
+    }
   }
 
   Future<void> _clearPersistedCreation() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_offlineCreationKey);
+    final file = File(await _draftFilePath);
+    if (await file.exists()) {
+      await file.delete();
+    }
   }
 
   void addToSelected(String name) {
@@ -241,7 +392,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                   .map((i) => {
                         'list_id': listId,
                         'user_id': userId,
-                        'name': i['item_name'],
+                        'name': i['item_name'] as String,
                         'quantity': i['quantity'] ?? 1,
                         'price': 0.0,
                         'is_checked': false,
@@ -268,7 +419,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
           context.go('/shoppingList?offline=true');
         }
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) _showNoInternetDialog();
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -319,13 +470,13 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         title: const Text('Creating my list',
             style: TextStyle(
                 color: Colors.white,
-                fontSize: 20, // Reduced from 24
+                fontSize: 20,
                 fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
       body: ListView(
         controller: _scrollController,
-        padding: const EdgeInsets.all(12), // Reduced from 16
+        padding: const EdgeInsets.all(12),
         physics: const ClampingScrollPhysics(),
         children: [
           Showcase(
@@ -338,10 +489,10 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                 color: Colors.cyan, fontSize: 18, fontWeight: FontWeight.bold),
             descTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
             child: Container(
-              padding: const EdgeInsets.all(16), // Reduced from 20
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                   color: const Color(0xFF1A1A1A),
-                  borderRadius: BorderRadius.circular(12)), // Reduced radius
+                  borderRadius: BorderRadius.circular(12)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -383,7 +534,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8), // Reduced from 12
+                      const SizedBox(width: 8),
                       Showcase(
                         key: _addButtonKey,
                         title: "Tap to add",
@@ -404,14 +555,12 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12), // Reduced from 20
+                  const SizedBox(height: 12),
                   const Text('Previous Items',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14)), // Reduced from 16
-                  const SizedBox(height: 6), // Reduced from 8
+                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                  const SizedBox(height: 6),
                   SizedBox(
-                    height: 120, // Slightly reduced height for density
+                    height: 120,
                     child: filteredPreviousItems.isEmpty
                         ? const Center(
                             child: Text('No matching items',
@@ -422,16 +571,15 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                             itemBuilder: (context, i) {
                               final itemName = filteredPreviousItems[i];
                               return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 3), // Reduced from 4
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 3),
                                 child: GestureDetector(
                                   onTap: () => addToSelected(itemName),
                                   onLongPress: () =>
                                       removeFromHistory(itemName),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 10), // Reduced padding
+                                        horizontal: 16, vertical: 10),
                                     decoration: BoxDecoration(
                                         color: const Color(0xFF222222),
                                         borderRadius:
@@ -459,7 +607,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
               ),
             ),
           ),
-          const SizedBox(height: 12), // Reduced from 20
+          const SizedBox(height: 12),
           Showcase(
             key: _selectedSectionKey,
             title: "Your shopping list",
@@ -471,7 +619,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                 color: Colors.cyan, fontSize: 18, fontWeight: FontWeight.bold),
             descTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
             child: Container(
-              padding: const EdgeInsets.all(16), // Reduced from 20
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                   color: const Color(0xFF1A1A1A),
                   borderRadius: BorderRadius.circular(12)),
@@ -479,10 +627,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Selected Items',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16)), // Reduced from 18
-                  const SizedBox(height: 8), // Reduced from 12
+                      style: TextStyle(color: Colors.white, fontSize: 16)),
+                  const SizedBox(height: 8),
                   selectedItems.isEmpty
                       ? const Center(
                           child: Text(
@@ -495,8 +641,12 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                           itemCount: selectedItems.length,
                           itemBuilder: (context, i) {
                             final item = selectedItems[i];
+                            final itemName = (item['item_name'] as String?) ??
+                                'Unnamed Item';
+
                             return Dismissible(
-                              key: Key(item['item_name']),
+                              key: Key(
+                                  itemName.isNotEmpty ? itemName : 'item_$i'),
                               direction: DismissDirection.endToStart,
                               background: Container(
                                 color: Colors.red,
@@ -509,9 +659,11 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
                                     vertical: 4, horizontal: 0),
-                                title: Text(item['item_name'] as String,
-                                    style: const TextStyle(
-                                        color: Colors.white, fontSize: 15)),
+                                title: Text(
+                                  itemName,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 15),
+                                ),
                                 trailing: IconButton(
                                   icon: const Icon(Icons.delete,
                                       color: Colors.red, size: 20),
@@ -521,7 +673,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                             );
                           },
                         ),
-                  const SizedBox(height: 16), // Reduced from 20
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
@@ -542,7 +694,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8), // Reduced from 12
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Showcase(
                           key: _readyButtonKey,
@@ -571,12 +723,9 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16), // Reduced from 20
+                  const SizedBox(height: 16),
                   if (_isBannerAdReady)
-                    SizedBox(
-                        height: 80,
-                        child:
-                            AdWidget(ad: _bannerAd)) // Slightly reduced height
+                    SizedBox(height: 80, child: AdWidget(ad: _bannerAd))
                   else
                     Container(
                         height: 80,
@@ -595,9 +744,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
               ),
             ),
           ),
-          SizedBox(
-              height: MediaQuery.of(context).viewInsets.bottom +
-                  80), // Reduced bottom padding
+          SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 80),
         ],
       ),
     );
@@ -609,7 +756,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         filled: true,
         fillColor: const Color(0xFF111111),
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(28), // Slightly smaller radius
+            borderRadius: BorderRadius.circular(28),
             borderSide: BorderSide.none),
         prefixIcon: const Icon(Icons.search, color: Colors.cyan, size: 20),
         suffixIcon: searchController.text.isNotEmpty
@@ -621,8 +768,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                 },
               )
             : null,
-        contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16, vertical: 12), // Reduced padding
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       );
 
   @override

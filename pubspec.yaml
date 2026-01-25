@@ -2,7 +2,7 @@ name: list_easy
 description: The smartest grocery list app in the world.
 publish_to: 'none'
 
-version: 1.0.5+6
+version: 1.0.6+7
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -16,7 +16,7 @@ dependencies:
   # Core & Backend
   supabase_flutter: ^2.10.0          # Latest stable (2026)
   flutter_secure_storage: ^9.2.4
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.5.3         # Already present, safe to keep
 
   # Navigation & Sharing
   go_router: ^14.3.0
@@ -34,6 +34,9 @@ dependencies:
 
   # Offline Detection (added for main.dart offline banner)
   connectivity_plus: ^6.0.5
+
+  # File-based draft persistence (new - required for reliable save on app kill)
+  path_provider: ^2.1.5
 
   # Utils
   intl: ^0.20.2

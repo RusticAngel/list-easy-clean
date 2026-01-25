@@ -1,6 +1,7 @@
 // lib/main.dart
 // FINAL + GLOBAL CURRENCY + CLEAN THEME + FULL OFFLINE SUPPORT + PUSH NOTIFICATIONS
-// FIXED: Used ShellRoute for persistent OfflineBanner + safe route checking
+// FIXED: Draft popup moved to CreatingWidget (reliable localizations)
+// No root-level draft check anymore — simpler & crash-free
 
 import 'dart:async';
 
@@ -136,7 +137,6 @@ final _router = GoRouter(
   routes: [
     ShellRoute(
       builder: (context, state, child) {
-        // Persistent UI (banner) for non-auth routes
         final currentLocation = GoRouterState.of(context).matchedLocation;
         final isAuthRoute = currentLocation.startsWith('/login') ||
             currentLocation.startsWith('/signup');
