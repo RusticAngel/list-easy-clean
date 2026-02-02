@@ -1,0 +1,35 @@
+{
+    "builds": [
+        {
+            "src": "pubspec.yaml",
+            "use": "@vercel/static-build",
+            "config": {
+                "distDir": "build/web"
+            }
+        }
+    ],
+    "routes": [
+        {
+            "src": "/.well-known/(.*)",
+            "dest": "/.well-known/$1"
+        },
+        {
+            "handle": "filesystem"
+        },
+        {
+            "src": "/.*",
+            "dest": "/"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/.well-known/assetlinks.json",
+            "headers": [
+                {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                }
+            ]
+        }
+    ]
+}
