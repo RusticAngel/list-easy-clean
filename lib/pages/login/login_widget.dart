@@ -181,9 +181,8 @@ class _LoginWidgetState extends State<LoginWidget> {
 
               const SizedBox(height: 48),
 
-              // Built with Grok credit
               const Text(
-                'Built with Grok by xAI',
+                '',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.white54,

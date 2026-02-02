@@ -1,17 +1,6 @@
 // lib/pages/shopping_list/shopping_list_widget.dart
 // FINAL LAUNCH VERSION — COMPACT + QUANTITY BUTTONS + FULL OFFLINE SUPPORT
-// + Persist current list primarily via SharedPreferences ('current_shopping_draft')
-//   → atomic, native-level writes → survives process kills much better
-// + File as optional backup (still atomic rename)
-// + Load: prefs first → file fallback → Supabase fallback
-// + Clear draft ONLY on explicit Finish confirmation ("Goodbye")
-// + Price editing improved + Total with 2 decimals
-// UPDATED: Single Add Item button + Swipe-to-delete + All items visible
-// + Tutorial (continues from creating, first launch only, smart scroll)
-// NEW: Global currency auto-detection + price input validation (max 9,999,999.99)
-// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding, compact density
-// SAFETY: PopScope intercepts back button + confirmation dialog
-// FIXED: LateInitializationError, curly_braces_in_flow_control_structures, use_build_context_synchronously
+// Ads disabled for clean v1.0 launch
 
 import 'dart:async';
 import 'dart:convert';
@@ -20,7 +9,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:showcaseview/showcaseview.dart';
@@ -46,12 +34,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   List<Map<String, dynamic>> items = [];
   bool isLoading = true;
 
-  late BannerAd _bannerAd;
-  bool _isBannerAdReady = false;
-
-  InterstitialAd? _interstitialAd;
-  bool _isInterstitialReady = false;
-
   late ScrollController _scrollController;
 
   final GlobalKey _checkboxKey = GlobalKey();
@@ -59,9 +41,14 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   final GlobalKey _priceKey = GlobalKey();
   final GlobalKey _finishButtonKey = GlobalKey();
 
-  SharedPreferences? _prefs; // Nullable - no late keyword
+  SharedPreferences? _prefs;
 
   String _deviceLocale = 'en_US';
+
+  bool _isSharing = false;
+
+  static const String appDownloadBaseUrl =
+      'https://play.google.com/store/apps/details?id=com.rusticangel.list_easy';
 
   Future<String> get _draftFilePath async {
     final directory = await getApplicationDocumentsDirectory();
@@ -76,10 +63,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     _deviceLocale =
         WidgetsBinding.instance.platformDispatcher.locale.toString();
 
-    _loadBannerAd();
-    _loadInterstitialAd();
-
-    // Fire-and-forget prefs init
     _initPrefs();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -122,13 +105,11 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
     debugPrint('>>> ShoppingList: Starting loadList()');
 
-    // FIX: Ensure prefs is ready before accessing it
     if (_prefs == null) {
       debugPrint('>>> Prefs not ready — awaiting initialization...');
       await _initPrefs();
     }
 
-    // 1. Primary: SharedPreferences
     String? jsonString = _prefs!.getString('current_shopping_draft');
 
     if (jsonString != null && jsonString.isNotEmpty && jsonString != '[]') {
@@ -166,11 +147,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
       } catch (e, stack) {
         debugPrint('>>> ShoppingList: Prefs draft parse error: $e\n$stack');
       }
-    } else {
-      debugPrint('>>> ShoppingList: No valid draft in prefs');
     }
 
-    // 2. Fallback to file
     final file = File(await _draftFilePath);
     if (await file.exists()) {
       try {
@@ -180,8 +158,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
       } catch (e) {
         debugPrint('>>> ShoppingList: File read error: $e');
       }
-    } else {
-      debugPrint('>>> ShoppingList: No draft file found');
     }
 
     if (jsonString != null && jsonString.isNotEmpty && jsonString != '[]') {
@@ -217,11 +193,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
       } catch (e, stack) {
         debugPrint('>>> ShoppingList: Backup file parse error: $e\n$stack');
       }
-    } else {
-      debugPrint('>>> ShoppingList: No valid draft in backup file');
     }
 
-    // 3. Supabase fallback
     if (!widget.isOffline && widget.listId != null) {
       try {
         final data = await supabase
@@ -255,7 +228,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   }
 
   Future<void> _saveCurrentListToJson() async {
-    // Guard: ensure prefs is ready
     if (_prefs == null) {
       debugPrint('>>> Prefs not ready before save — awaiting...');
       await _initPrefs();
@@ -264,12 +236,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     final jsonString = jsonEncode(items);
 
     try {
-      // Primary save to SharedPreferences
       await _prefs!.setString('current_shopping_draft', jsonString);
       debugPrint(
           '>>> Saved to SharedPrefs (${items.length} items) | length: ${jsonString.length} chars');
 
-      // Optional file backup (atomic rename)
       final path = await _draftFilePath;
       final tempPath = '$path.tmp';
       final tempFile = File(tempPath);
@@ -282,7 +252,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
       debugPrint('>>> Backup file atomic save OK | path: $path');
 
-      // Verify
       final after = await File(path).readAsString();
       debugPrint('>>> Verify backup file: ${after.length} chars');
     } catch (e) {
@@ -417,7 +386,29 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
       return;
     }
 
+    if (_isSharing) return;
+
+    setState(() => _isSharing = true);
+
     try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('Preparing share...'),
+            ],
+          ),
+          duration: Duration(seconds: 10),
+        ),
+      );
+
       final response = await supabase
           .from('shopping_lists')
           .update({'is_public': true})
@@ -426,44 +417,39 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           .single();
 
       final shareId = response['share_id'] as String;
-      final shareLink = 'https://app.listeasy.com/share/$shareId';
+      final shareLink = 'https://list-easy.vercel.app/share/$shareId';
+
+      final shareText = 'Check out my shopping list on List Easy!\n'
+          'Total: ${formatPrice(total)}\n\n'
+          'Open here: $shareLink\n\n'
+          'Get the app to create your own lists: $appDownloadBaseUrl';
 
       await Share.share(
-        'Check out my shopping list on List Easy!\n'
-        'Total: ${formatPrice(total)}\n\n'
-        '$shareLink',
+        shareText,
         subject: 'My Shopping List - ${formatPrice(total)}',
       );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('List shared successfully!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('>>> Share error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to share list')),
+          const SnackBar(
+            content: Text('Failed to share list — try again'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
-    }
-  }
-
-  Future<void> _showInterstitialAndExit() async {
-    if (_isInterstitialReady && _interstitialAd != null) {
-      _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
-        onAdDismissedFullScreenContent: (ad) async {
-          ad.dispose();
-          await _updateReferralStatus();
-          if (mounted) SystemNavigator.pop();
-        },
-        onAdFailedToShowFullScreenContent: (ad, err) async {
-          ad.dispose();
-          await _updateReferralStatus();
-          if (mounted) SystemNavigator.pop();
-        },
-      );
-      await _interstitialAd!.show();
-      _interstitialAd = null;
-      _isInterstitialReady = false;
-    } else {
-      await _updateReferralStatus();
-      if (mounted) SystemNavigator.pop();
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
     }
   }
 
@@ -500,42 +486,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     }
   }
 
-  void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-1957460965962453/8166692213',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          if (mounted) setState(() => _isBannerAdReady = true);
-        },
-        onAdFailedToLoad: (ad, err) => ad.dispose(),
-      ),
-    )..load();
-  }
-
-  void _loadInterstitialAd() {
-    InterstitialAd.load(
-      adUnitId: 'ca-app-pub-1957460965962453/7400405459',
-      request: const AdRequest(),
-      adLoadCallback: InterstitialAdLoadCallback(
-        onAdLoaded: (ad) {
-          _interstitialAd = ad;
-          _isInterstitialReady = true;
-        },
-        onAdFailedToLoad: (err) {
-          _isInterstitialReady = false;
-          _interstitialAd = null;
-        },
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
-    _bannerAd.dispose();
-    _interstitialAd?.dispose();
     super.dispose();
   }
 
@@ -654,60 +607,67 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   }
 
   Future<void> _confirmFinish() async {
-    showDialog(
+    if (!mounted) return;
+
+    await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1C1C1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Thank you for using List Easy!',
-          style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold),
-          textAlign: TextAlign.center,
-        ),
-        content: Text(
-          'Your total: ${formatPrice(total)}',
-          style: const TextStyle(color: Colors.white, fontSize: 18),
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () async {
-                // Guard prefs before clear
-                if (_prefs == null) {
-                  await _initPrefs();
-                }
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Thank you for using List Easy!',
+            style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          content: Text(
+            'Your total: ${formatPrice(total)}',
+            style: const TextStyle(color: Colors.white, fontSize: 18),
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            Center(
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (!mounted) return;
 
-                await _prefs!.remove('current_shopping_draft');
-                debugPrint('>>> Finish confirmed → prefs draft cleared');
+                  if (_prefs == null) {
+                    await _initPrefs();
+                  }
 
-                final file = File(await _draftFilePath);
-                if (await file.exists()) {
-                  await file.delete();
-                  debugPrint('>>> Finish confirmed → backup file cleared');
-                }
+                  await _prefs!.remove('current_shopping_draft');
+                  debugPrint('>>> Finish confirmed → prefs draft cleared');
 
-                if (!mounted) return;
+                  final file = File(await _draftFilePath);
+                  if (await file.exists()) {
+                    await file.delete();
+                    debugPrint('>>> Finish confirmed → backup file cleared');
+                  }
 
-                // ignore: use_build_context_synchronously
-                Navigator.pop(ctx);
-                _showInterstitialAndExit();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28)),
-              ),
-              child: const Text(
-                'Goodbye',
-                style:
-                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                  if (!mounted) return;
+
+                  // ignore: use_build_context_synchronously
+                  Navigator.pop(dialogCtx);
+                  await _updateReferralStatus();
+                  if (mounted) SystemNavigator.pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28)),
+                ),
+                child: const Text(
+                  'Goodbye',
+                  style: TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -761,9 +721,18 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
               ? null
               : [
                   IconButton(
-                    icon: const Icon(Icons.share, color: Colors.cyan, size: 22),
+                    icon: _isSharing
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.cyan,
+                            ),
+                          )
+                        : const Icon(Icons.share, color: Colors.cyan, size: 22),
                     tooltip: 'Share this list',
-                    onPressed: _shareList,
+                    onPressed: _isSharing ? null : _shareList,
                   ),
                 ],
         ),
@@ -1000,29 +969,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                         ),
                       ),
                     ),
-                    if (_isBannerAdReady)
-                      Container(
-                        height: 100,
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
-                        alignment: Alignment.center,
-                        child: AdWidget(ad: _bannerAd),
-                      )
-                    else
-                      Container(
-                        height: 100,
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
-                        color: const Color(0xFF111111),
-                        alignment: Alignment.center,
-                        child: const Text('Loading ad...',
-                            style: TextStyle(color: Colors.white38)),
-                      ),
-                    const SizedBox(height: 8),
-                    const Text('Built with Grok by xAI',
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.white54,
-                            fontWeight: FontWeight.w300),
-                        textAlign: TextAlign.center),
+                    // No footer text — clean look
+                    const SizedBox(height: 32), // optional bottom padding
                   ],
                 ),
               ),

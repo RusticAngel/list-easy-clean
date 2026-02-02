@@ -2,7 +2,10 @@ name: list_easy
 description: The smartest grocery list app in the world.
 publish_to: 'none'
 
-version: 1.0.6+7
+# ────────────────────────────────────────────────────────────────
+# Version incremented for sharing + delayed review prompt update
+# ────────────────────────────────────────────────────────────────
+version: 1.0.9+13
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -16,12 +19,15 @@ dependencies:
   # Core & Backend
   supabase_flutter: ^2.10.0          # Latest stable (2026)
   flutter_secure_storage: ^9.2.4
-  shared_preferences: ^2.5.3         # Already present, safe to keep
+  shared_preferences: ^2.5.3
 
   # Navigation & Sharing
   go_router: ^14.3.0
   share_plus: ^10.0.3
   url_launcher: ^6.3.0
+
+  # NEW: Required for generating unique share_id on list creation
+  uuid: ^4.5.0
 
   # Monetization
   google_mobile_ads: ^6.0.0
@@ -32,18 +38,20 @@ dependencies:
   # Interactive Tutorial
   showcaseview: ^3.0.0
 
-  # Offline Detection (added for main.dart offline banner)
+  # Offline Detection (used in main.dart offline banner)
   connectivity_plus: ^6.0.5
 
-  # File-based draft persistence (new - required for reliable save on app kill)
+  # File-based draft persistence (reliable save on app kill)
   path_provider: ^2.1.5
 
   # Utils
   intl: ^0.20.2
   cupertino_icons: ^1.0.8
 
-  # Uncomment these when adding social logins later:
-  # google_sign_in: ^6.3.0
+  # Google Sign-In (enabled now)
+  google_sign_in: ^6.2.2
+
+  # Uncomment these when adding other social logins later:
   # flutter_facebook_auth: ^7.1.1
   # sign_in_with_apple: ^7.0.1
 
@@ -67,3 +75,4 @@ flutter:
     - assets/images/
     - assets/whatsapp_logo.jpg
     - assets/WhatsApp.svg
+    - assets/google_logo.png          # ← Added this line for your Google logo

@@ -1,16 +1,11 @@
 // lib/pages/creating/creating_widget.dart
-// FINAL + TAP REMOVES ITEM + SMART SEARCH + FREQUENCY SORT + FULL OFFLINE SUPPORT
-// + Persist in-progress creation to JSON file (reliable instant save)
-// + Load on open + Clear on success
-// + Graceful offline handling + OneSignal tag + KEYBOARD FIX
-// FIXED: Removed unwanted auto-scroll
-// + Single Add Item button + Swipe-to-delete + All items visible
-// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding
-// FIXED: Draft popup uses correct file
-// FIXED: Safe draft loading & rendering → no more null crashes
-// FIXED: Continue now simply navigates to ShoppingList (draft loads from file)
-// FIXED: Discard clears draft file and keeps user on fresh Creating page
-// IMPROVED: File-based persistence (path_provider) for crash-proof saving
+// Smart search + frequency sort + full offline support
+// Persist in-progress list to JSON file (crash-resistant)
+// Load on open + clear on success
+// Graceful offline handling + OneSignal tag
+// Single Add Item button + swipe-to-delete
+// Generate unique share_id (UUID v4) for sharing
+// Refer button: "Get Free Months"
 
 import 'dart:async';
 import 'dart:convert';
@@ -19,13 +14,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:showcaseview/showcaseview.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:list_easy/pages/shopping_list/shopping_list_widget.dart';
 
@@ -45,9 +40,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   List<Map<String, dynamic>> selectedItems = [];
   bool isLoading = false;
 
-  late BannerAd _bannerAd;
-  bool _isBannerAdReady = false;
-
   late ScrollController _scrollController;
 
   final GlobalKey _searchKey = GlobalKey();
@@ -57,7 +49,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   final GlobalKey _referButtonKey = GlobalKey();
   final GlobalKey _readyButtonKey = GlobalKey();
 
-  // File path for draft persistence (crash-resistant)
   Future<String> get _draftFilePath async {
     final directory = await getApplicationDocumentsDirectory();
     return '${directory.path}/offline_current_list.json';
@@ -69,7 +60,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     _scrollController = ScrollController();
 
     _loadEverything();
-    _loadBannerAd();
 
     _checkForUnfinishedDraft();
 
@@ -107,14 +97,14 @@ class _CreatingWidgetState extends State<CreatingWidget> {
       return {
         'item_name': name,
         'quantity': (item['quantity'] as num?)?.toInt() ?? 1,
-        'price': (item['price'] as num?)?.toDouble() ?? 0.0,
         ...item,
       };
     }).toList();
 
     double total = 0.0;
     for (var item in loadedItems) {
-      total += (item['price'] as double) * (item['quantity'] as int);
+      total +=
+          (item['price'] as double? ?? 0.0) * (item['quantity'] as int? ?? 1);
     }
 
     if (!mounted) return;
@@ -174,7 +164,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
 
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const ShoppingListWidget()),
         );
@@ -299,9 +288,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
 
     try {
       await file.writeAsString(jsonString, mode: FileMode.write);
-    } catch (_) {
-      // Silent in production
-    }
+    } catch (_) {}
   }
 
   Future<void> _clearPersistedCreation() async {
@@ -348,12 +335,13 @@ class _CreatingWidgetState extends State<CreatingWidget> {
             style: TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child:
-                  const Text('Cancel', style: TextStyle(color: Colors.cyan))),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.cyan)),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Remove', style: TextStyle(color: Colors.red))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
@@ -373,14 +361,20 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     try {
       final userId = supabase.auth.currentUser?.id;
       int? listId;
+      String? shareId;
 
       if (userId != null) {
+        shareId = const Uuid().v4();
+        debugPrint('Generated share_id: $shareId');
+
         final listResp = await supabase
             .from('shopping_lists')
             .insert({
               'user_id': userId,
               'name':
-                  'My List ${DateTime.now().toIso8601String().substring(0, 10)}'
+                  'My List ${DateTime.now().toIso8601String().substring(0, 10)}',
+              'share_id': shareId,
+              'is_public': false,
             })
             .select()
             .single();
@@ -419,7 +413,8 @@ class _CreatingWidgetState extends State<CreatingWidget> {
           context.go('/shoppingList?offline=true');
         }
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('createListAndGo error: $e');
       if (mounted) _showNoInternetDialog();
     } finally {
       if (mounted) setState(() => isLoading = false);
@@ -438,25 +433,12 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK', style: TextStyle(color: Colors.cyan))),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK', style: TextStyle(color: Colors.cyan)),
+          ),
         ],
       ),
     );
-  }
-
-  void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-1957460965962453/8166692213',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          if (mounted) setState(() => _isBannerAdReady = true);
-        },
-        onAdFailedToLoad: (ad, err) => ad.dispose(),
-      ),
-    )..load();
   }
 
   @override
@@ -688,7 +670,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                                 side: const BorderSide(color: Colors.cyan),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12)),
-                            child: const Text('Refer a Friend',
+                            child: const Text('Get Free Months',
                                 style: TextStyle(
                                     color: Colors.cyan, fontSize: 14)),
                           ),
@@ -723,23 +705,7 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  if (_isBannerAdReady)
-                    SizedBox(height: 80, child: AdWidget(ad: _bannerAd))
-                  else
-                    Container(
-                        height: 80,
-                        color: const Color(0xFF111111),
-                        alignment: Alignment.center,
-                        child: const Text('Loading ad...',
-                            style: TextStyle(color: Colors.white38))),
-                  const SizedBox(height: 8),
-                  const Text('Built with Grok by xAI',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white54,
-                          fontWeight: FontWeight.w300),
-                      textAlign: TextAlign.center),
+                  // No footer text — clean look
                 ],
               ),
             ),
@@ -776,7 +742,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
   void dispose() {
     _scrollController.dispose();
     searchController.dispose();
-    _bannerAd.dispose();
     super.dispose();
   }
 }

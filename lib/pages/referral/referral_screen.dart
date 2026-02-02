@@ -1,19 +1,14 @@
 // lib/pages/referral/referral_screen.dart
-// FINAL VERSION – ALL TIERS + BANNER AD + SMALLER TEXT
-// FIXED: Overflow on tier stats (using Wrap + ellipsis)
-// FIXED: ALL use_build_context_synchronously warnings (safe messenger + context storage)
-// + Consistent "Loading ad..." placeholder
-// + Referral hint bubble: triggers on first open of referral page + re-trigger after 50 days
-// + Per-friend progress (expandable), promo active days 16–22
-// VISUAL POLISH: Tighter layout, smaller fonts, reduced padding, compact density
-// NEW: 2-column GridView for tiers, "View All Friends" modal, button animations, enhanced progress bar, hint bubble fit fix
+// FINAL VERSION – ALL TIERS + REFERRAL CLARIFICATION TEXT
+// Banner ads disabled for clean v1.0 launch (low fill rate on new app)
+// Re-enable when traffic grows and ads are reliable
+// Added: Short "rewards are extra / added on top" bullet under "How it works"
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ReferralScreen extends StatefulWidget {
@@ -34,9 +29,6 @@ class _ReferralScreenState extends State<ReferralScreen>
   List<Map<String, dynamic>> referrals = [];
   bool isPromoActive = false;
 
-  BannerAd? _bannerAd;
-  bool _isBannerAdReady = false;
-
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
 
@@ -52,7 +44,6 @@ class _ReferralScreenState extends State<ReferralScreen>
     );
 
     _loadData();
-    _loadBannerAd();
     _setFirstOpenDate();
 
     // NEW: Check for hint on first open + 50-day re-trigger
@@ -64,7 +55,6 @@ class _ReferralScreenState extends State<ReferralScreen>
   @override
   void dispose() {
     _animController.dispose();
-    _bannerAd?.dispose();
     super.dispose();
   }
 
@@ -110,18 +100,6 @@ class _ReferralScreenState extends State<ReferralScreen>
         isPromoActive = promoActive;
       });
     }
-  }
-
-  void _loadBannerAd() {
-    _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-1957460965962453/8166692213',
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) => setState(() => _isBannerAdReady = true),
-        onAdFailedToLoad: (ad, err) => ad.dispose(),
-      ),
-    )..load();
   }
 
   Future<void> _shareReferral() async {
@@ -249,13 +227,15 @@ We both get free premium months when you sign up and finish a shopping adventure
                         completed >= 2 ? Colors.greenAccent : Colors.white70;
 
                     return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 0),
                       leading: CircleAvatar(
                         radius: 16,
                         backgroundColor: Colors.cyan,
                         child: Text('F',
                             style: const TextStyle(color: Colors.black)),
                       ),
-                      title: Text('Friend ${index + 1}',
+                      title: Text('Friend ${referrals.indexOf(ref) + 1}',
                           style: const TextStyle(
                               color: Colors.white, fontSize: 14)),
                       trailing: Text(
@@ -516,6 +496,12 @@ We both get free premium months when you sign up and finish a shopping adventure
                 'They must create at least two lists'),
             _howItWorksItem('3', 'You get rewarded',
                 'Every 2 successful referrals = 1 free premium month'),
+            // NEW: Short clarification that rewards are extra / added on top
+            _howItWorksItem(
+              '',
+              'Rewards are extra',
+              'Free months are additional — added on top of your current subscription time.',
+            ),
             const SizedBox(height: 24),
             const Text('Reward Tiers',
                 style: TextStyle(
@@ -558,25 +544,10 @@ We both get free premium months when you sign up and finish a shopping adventure
                     isSpecial: true),
               ],
             ),
-            const SizedBox(height: 24),
-            if (_isBannerAdReady)
-              Container(
-                height: _bannerAd!.size.height.toDouble(),
-                width: double.infinity,
-                alignment: Alignment.center,
-                child: AdWidget(ad: _bannerAd!),
-              )
-            else
-              Container(
-                height: 80,
-                color: const Color(0xFF111111),
-                alignment: Alignment.center,
-                child: const Text('Loading ad...',
-                    style: TextStyle(color: Colors.white38)),
-              ),
-            const SizedBox(height: 8),
+            // Banner removed – clean launch look
+            const SizedBox(height: 16),
             const Text(
-              'Built with Grok by xAI',
+              '',
               style: TextStyle(
                   fontSize: 10,
                   color: Colors.white54,
@@ -608,29 +579,37 @@ We both get free premium months when you sign up and finish a shopping adventure
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.cyan,
-              child: Text(number,
-                  style: const TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14)),
-            ),
-            const SizedBox(width: 12),
+            if (number.isNotEmpty)
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.cyan,
+                child: Text(number,
+                    style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14)),
+              ),
+            if (number.isNotEmpty) const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white)),
-                  const SizedBox(height: 3),
+                  if (title.isNotEmpty)
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                  if (title.isNotEmpty) const SizedBox(height: 3),
                   Text(subtitle,
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 13)),
+                      style: TextStyle(
+                          color: number.isEmpty
+                              ? Colors.cyanAccent
+                              : Colors.white70,
+                          fontSize: 13,
+                          fontStyle: number.isEmpty
+                              ? FontStyle.italic
+                              : FontStyle.normal)),
                 ],
               ),
             ),
