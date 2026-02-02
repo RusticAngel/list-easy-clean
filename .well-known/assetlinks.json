@@ -1,8 +1,15 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.rusticangel.list_easy",
-    "sha256_cert_fingerprints": [45:BF:FD:35:9B:D8:CF:6E:C3:B1:9B:3A:60:3A:35:A7:B9:E4:77:65:6B:FC:38:C8:85:30:51:A1:26:1E:B8:8A]
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.rusticangel.list_easy",
+      "sha256_cert_fingerprints": [
+        "45:BF:FD:35:9B:D8:CF:6E:C3:B1:9B:3A:60:3A:35:A7:B9:E4:77:65:6B:FC:38:C8:85:30:51:A1:26:1E:B8:8A"
+      ]
+    }
   }
-}]
+]
