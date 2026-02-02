@@ -1,12 +1,12 @@
 // lib/pages/signup/signup_widget.dart
-// FINAL LAUNCH VERSION — CLEAN SIGN-UP WITH FRIENDLY ERRORS
-// FIXED: Overflow on "Already have an account?" row (yellow tape warning)
-// Graceful offline handling + KEYBOARD FIX (content scrolls above keyboard)
-// UPDATED: First-time user focus, no offline mode, welcoming UI, prominent Sign In link
+// FINAL LAUNCH VERSION — CLEAN SIGN-UP WITH FRIENDLY ERRORS + GOOGLE SIGN-IN
+// FIXED: Overflow on "Already have an account?" row
+// ADDED: Google Sign-In button under "Create Account" with real client ID
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class SignupWidget extends StatefulWidget {
   const SignupWidget({super.key});
@@ -21,6 +21,13 @@ class _SignupWidgetState extends State<SignupWidget> {
   final passwordController = TextEditingController();
   final confirmController = TextEditingController();
   bool isLoading = false;
+  bool isGoogleLoading = false;
+
+  final supabase = Supabase.instance.client;
+
+  // Your real Google Web Client ID (from Google Cloud Console)
+  static const String _googleWebClientId =
+      '676500740076-te27b9cad5olqh9b92dvph7qtss4ufvv.apps.googleusercontent.com';
 
   Future<void> _signup() async {
     // Basic validation
@@ -36,11 +43,11 @@ class _SignupWidgetState extends State<SignupWidget> {
       return;
     }
 
-    if (isLoading) return;
+    if (isLoading || isGoogleLoading) return;
     setState(() => isLoading = true);
 
     try {
-      await Supabase.instance.client.auth.signUp(
+      await supabase.auth.signUp(
         email: emailController.text.trim(),
         password: passwordController.text,
         data: {'full_name': nameController.text.trim()},
@@ -53,18 +60,69 @@ class _SignupWidgetState extends State<SignupWidget> {
 
       if (e.message.toLowerCase().contains('already registered') ||
           e.message.toLowerCase().contains('user already')) {
-        message = 'Email already registered — try signing in';
+        message = 'Email already registered — try signing in instead';
       } else if (e.message.toLowerCase().contains('password')) {
-        message = 'Password too weak — try a longer one';
+        message = 'Password too weak — use at least 6 characters';
+      } else if (e.message.toLowerCase().contains('invalid')) {
+        message = 'Invalid email or password format';
       }
 
       if (mounted) _showError(message);
     } catch (e) {
       if (mounted) {
-        _showError('Something went wrong — please try again');
+        _showError('Something went wrong — check your connection');
       }
     } finally {
       if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    if (isLoading || isGoogleLoading) return;
+    setState(() => isGoogleLoading = true);
+
+    try {
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        clientId: _googleWebClientId,
+        scopes: ['email', 'profile'],
+      );
+
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        // User canceled sign-in
+        setState(() => isGoogleLoading = false);
+        return;
+      }
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+      final String? idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        throw 'No ID token received from Google';
+      }
+
+      final AuthResponse response = await supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+      );
+
+      if (response.user != null && mounted) {
+        // Success — go to create list (or home if you prefer)
+        context.go('/create');
+      }
+    } on AuthException catch (e) {
+      String message = e.message;
+
+      if (message.toLowerCase().contains('already')) {
+        message = 'This Google account is already linked — try signing in';
+      }
+
+      _showError(message);
+    } catch (e) {
+      _showError('Google Sign-In failed — please try again');
+    } finally {
+      if (mounted) setState(() => isGoogleLoading = false);
     }
   }
 
@@ -82,7 +140,7 @@ class _SignupWidgetState extends State<SignupWidget> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: true, // Keyboard scrolls content up
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.only(
@@ -147,12 +205,12 @@ class _SignupWidgetState extends State<SignupWidget> {
               ),
               const SizedBox(height: 40),
 
-              // Sign Up button
+              // Email Sign Up button
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: isLoading ? null : _signup,
+                  onPressed: (isLoading || isGoogleLoading) ? null : _signup,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.cyan,
                     foregroundColor: Colors.black,
@@ -180,9 +238,59 @@ class _SignupWidgetState extends State<SignupWidget> {
                 ),
               ),
 
+              const SizedBox(height: 24),
+
+              // "or" separator
+              const Text(
+                'or',
+                style: TextStyle(color: Colors.white70, fontSize: 16),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Google Sign-In Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed:
+                      (isLoading || isGoogleLoading) ? null : _signInWithGoogle,
+                  icon: isGoogleLoading
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.black,
+                            strokeWidth: 3,
+                          ),
+                        )
+                      : Image.asset(
+                          'assets/google_logo.png',
+                          width: 24,
+                          height: 24,
+                        ),
+                  label: const Text(
+                    'Continue with Google',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 32),
 
-              // Already have account? Sign In — FIXED overflow
+              // Already have account? Sign In
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -213,14 +321,14 @@ class _SignupWidgetState extends State<SignupWidget> {
 
               const SizedBox(height: 48),
 
-              // Built with Grok credit
               const Text(
-                'Built with Grok by xAI',
+                'By signing up, you agree to our Terms of Service and Privacy Policy.',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.white54,
                   fontWeight: FontWeight.w300,
                 ),
+                textAlign: TextAlign.center,
               ),
             ],
           ),

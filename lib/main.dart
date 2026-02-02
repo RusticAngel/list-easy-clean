@@ -1,6 +1,8 @@
 // lib/main.dart
 // FINAL + GLOBAL CURRENCY + CLEAN THEME + FULL OFFLINE SUPPORT + PUSH NOTIFICATIONS
-// FIXED: Used ShellRoute for persistent OfflineBanner + safe route checking
+// FIXED: Draft popup moved to CreatingWidget (reliable localizations)
+// No root-level draft check anymore — simpler & crash-free
+// UPDATED: Router now points /share/:shareId to editable SharedShoppingListWidget
 
 import 'dart:async';
 
@@ -16,7 +18,7 @@ import 'pages/signup/signup_widget.dart';
 import 'pages/creating/creating_widget.dart';
 import 'pages/shopping_list/shopping_list_widget.dart';
 import 'pages/referral/referral_screen.dart';
-import 'pages/share/share_list_page.dart';
+import 'pages/share/shared_shopping_list_widget.dart'; // ← NEW: editable shared list
 import 'services/currency_service.dart';
 
 void main() async {
@@ -136,7 +138,6 @@ final _router = GoRouter(
   routes: [
     ShellRoute(
       builder: (context, state, child) {
-        // Persistent UI (banner) for non-auth routes
         final currentLocation = GoRouterState.of(context).matchedLocation;
         final isAuthRoute = currentLocation.startsWith('/login') ||
             currentLocation.startsWith('/signup');
@@ -184,7 +185,8 @@ final _router = GoRouter(
           path: '/share/:shareId',
           builder: (context, state) {
             final shareId = state.pathParameters['shareId']!;
-            return ShareListPage(shareId: shareId);
+            return SharedShoppingListWidget(
+                shareId: shareId); // ← UPDATED: editable shared list
           },
         ),
       ],
