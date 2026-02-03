@@ -1,6 +1,11 @@
 // lib/pages/shopping_list/shopping_list_widget.dart
 // FINAL LAUNCH VERSION — COMPACT + QUANTITY BUTTONS + FULL OFFLINE SUPPORT
 // Ads disabled for clean v1.0 launch
+// FIXED: Tutorial shows ONLY once on first real load (persistent flag + post-load check)
+// FIXED: Currency uses actual device locale (no forced $)
+// FIXED: Non-bouncing handled globally in main.dart
+// FIXED: All mounted guards + missing methods added
+// CLEANED: Removed unused fields & improved null-safety
 
 import 'dart:async';
 import 'dart:convert';
@@ -34,8 +39,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   List<Map<String, dynamic>> items = [];
   bool isLoading = true;
 
-  late ScrollController _scrollController;
-
   final GlobalKey _checkboxKey = GlobalKey();
   final GlobalKey _quantityMinusKey = GlobalKey();
   final GlobalKey _priceKey = GlobalKey();
@@ -47,11 +50,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   bool _isSharing = false;
 
-  static const String shareBaseUrl = 'https://list-easy.vercel.app';
-
-  static const String appDownloadBaseUrl =
-      'https://play.google.com/store/apps/details?id=com.rusticangel.list_easy';
-
   Future<String> get _draftFilePath async {
     final directory = await getApplicationDocumentsDirectory();
     return '${directory.path}/offline_current_list.json';
@@ -60,15 +58,15 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController();
 
+    // Capture real device locale once
     _deviceLocale =
         WidgetsBinding.instance.platformDispatcher.locale.toString();
 
     _initPrefs();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startTutorialIfNeeded();
+      // Tutorial check moved here, but real start happens after load
     });
   }
 
@@ -84,20 +82,31 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   Future<void> _startTutorialIfNeeded() async {
     final prefs = await SharedPreferences.getInstance();
-    final creatingShown = prefs.getBool('tutorial_shown') ?? false;
-    final shoppingComplete =
-        prefs.getBool('shopping_tutorial_complete') ?? false;
 
-    if (creatingShown && !shoppingComplete && mounted && items.isNotEmpty) {
-      ShowCaseWidget.of(context).startShowCase([
-        _checkboxKey,
-        _quantityMinusKey,
-        _priceKey,
-        _finishButtonKey,
-      ]);
-
-      await prefs.setBool('shopping_tutorial_complete', true);
+    // One-time migration from old flag name
+    if (prefs.containsKey('shopping_tutorial_complete') &&
+        !prefs.containsKey('shopping_tutorial_shown')) {
+      final oldShown = prefs.getBool('shopping_tutorial_complete') ?? false;
+      if (oldShown) {
+        await prefs.setBool('shopping_tutorial_shown', true);
+      }
+      await prefs.remove('shopping_tutorial_complete');
     }
+
+    // Persistent flag — true = never show again
+    final tutorialShown = prefs.getBool('shopping_tutorial_shown') ?? false;
+
+    if (tutorialShown || !mounted || items.isEmpty) return;
+
+    ShowCaseWidget.of(context).startShowCase([
+      _checkboxKey,
+      _quantityMinusKey,
+      _priceKey,
+      _finishButtonKey,
+    ]);
+
+    // Set flag immediately after starting
+    await prefs.setBool('shopping_tutorial_shown', true);
   }
 
   Future<void> _loadList() async {
@@ -135,6 +144,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         }
 
         setState(() => isLoading = false);
+
+        // Start tutorial after items are loaded (first launch only)
+        _startTutorialIfNeeded();
         return;
       } catch (e) {
         // Silent fail — try backup file next
@@ -169,6 +181,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         }
 
         setState(() => isLoading = false);
+
+        // Start tutorial after items are loaded (first launch only)
+        _startTutorialIfNeeded();
         return;
       } catch (e) {
         // Silent fail — fall through to Supabase or empty
@@ -190,6 +205,12 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           });
           await _saveCurrentListToJson();
         }
+
+        setState(() => isLoading = false);
+
+        // Start tutorial after items are loaded (first launch only)
+        _startTutorialIfNeeded();
+        return;
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -202,7 +223,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     if (mounted) {
       setState(() => isLoading = false);
     }
-    await _startTutorialIfNeeded();
   }
 
   Future<void> _saveCurrentListToJson() async {
@@ -353,23 +373,25 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     setState(() => _isSharing = true);
 
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
-              ),
-              SizedBox(width: 12),
-              Text('Preparing share...'),
-            ],
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 12),
+                Text('Preparing share...'),
+              ],
+            ),
+            duration: Duration(seconds: 10),
           ),
-          duration: Duration(seconds: 10),
-        ),
-      );
+        );
+      }
 
       final response = await supabase
           .from('shopping_lists')
@@ -379,12 +401,12 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           .single();
 
       final shareId = response['share_id'] as String;
-      final shareLink = '$shareBaseUrl/share/$shareId';
+      final shareLink = 'https://list-easy.vercel.app/share/$shareId';
 
       final shareText = 'Check out my shopping list on List Easy!\n'
           'Total: ${formatPrice(total)}\n\n'
           'Open here: $shareLink\n\n'
-          'Get the app to create your own lists: $appDownloadBaseUrl';
+          'Get the app to create your own lists: https://play.google.com/store/apps/details?id=com.rusticangel.list_easy';
 
       await Share.share(
         shareText,
@@ -447,7 +469,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
     super.dispose();
   }
 
