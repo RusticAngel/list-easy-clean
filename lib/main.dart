@@ -3,6 +3,7 @@
 // FIXED: Draft popup moved to CreatingWidget (reliable localizations)
 // No root-level draft check anymore — simpler & crash-free
 // UPDATED: Router now points /share/:shareId to editable SharedShoppingListWidget
+// ADDED: Non-bouncing showcases globally + install date tracking for 24-day rating prompt
 
 import 'dart:async';
 
@@ -12,13 +13,14 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:showcaseview/showcaseview.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'pages/login/login_widget.dart';
 import 'pages/signup/signup_widget.dart';
 import 'pages/creating/creating_widget.dart';
 import 'pages/shopping_list/shopping_list_widget.dart';
 import 'pages/referral/referral_screen.dart';
-import 'pages/share/shared_shopping_list_widget.dart'; // ← NEW: editable shared list
+import 'pages/share/shared_shopping_list_widget.dart';
 import 'services/currency_service.dart';
 
 void main() async {
@@ -61,7 +63,17 @@ void main() async {
     debugPrint('OneSignal tags failed: $e');
   }
 
+  // Track install date once (for 24-day rating prompt)
+  await _trackInstallDate();
+
   runApp(const MyApp());
+}
+
+Future<void> _trackInstallDate() async {
+  final prefs = await SharedPreferences.getInstance();
+  if (!prefs.containsKey('install_date')) {
+    await prefs.setInt('install_date', DateTime.now().millisecondsSinceEpoch);
+  }
 }
 
 class OfflineBanner extends StatefulWidget {
@@ -157,12 +169,17 @@ final _router = GoRouter(
           },
         ),
         GoRoute(
-            path: '/signup', builder: (context, state) => const SignupWidget()),
+          path: '/signup',
+          builder: (context, state) => const SignupWidget(),
+        ),
         GoRoute(
-            path: '/login', builder: (context, state) => const LoginWidget()),
+          path: '/login',
+          builder: (context, state) => const LoginWidget(),
+        ),
         GoRoute(
-            path: '/create',
-            builder: (context, state) => const CreatingWidget()),
+          path: '/create',
+          builder: (context, state) => const CreatingWidget(),
+        ),
         GoRoute(
           path: '/shoppingList',
           builder: (context, state) {
@@ -179,14 +196,14 @@ final _router = GoRouter(
           },
         ),
         GoRoute(
-            path: '/referral',
-            builder: (context, state) => const ReferralScreen()),
+          path: '/referral',
+          builder: (context, state) => const ReferralScreen(),
+        ),
         GoRoute(
           path: '/share/:shareId',
           builder: (context, state) {
             final shareId = state.pathParameters['shareId']!;
-            return SharedShoppingListWidget(
-                shareId: shareId); // ← UPDATED: editable shared list
+            return SharedShoppingListWidget(shareId: shareId);
           },
         ),
       ],
@@ -228,6 +245,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ShowCaseWidget(
+      // Globally disable bouncing and scaling animation for all showcase bubbles
+      disableMovingAnimation: true,
+      disableScaleAnimation: true,
+      autoPlay: false,
       builder: (context) => MaterialApp.router(
         title: 'List Easy',
         debugShowCheckedModeBanner: false,

@@ -6,6 +6,8 @@
 // Single Add Item button + swipe-to-delete
 // Generate unique share_id (UUID v4) for sharing
 // Refer button: "Get Free Months"
+// FIXED: Removed invalid 'animate' param (non-bouncing handled globally in main.dart)
+// FIXED: Added mounted checks after async gaps
 
 import 'dart:async';
 import 'dart:convert';
@@ -21,6 +23,7 @@ import 'package:showcaseview/showcaseview.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:uuid/uuid.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:list_easy/pages/shopping_list/shopping_list_widget.dart';
 
@@ -412,6 +415,11 @@ class _CreatingWidgetState extends State<CreatingWidget> {
         } else {
           context.go('/shoppingList?offline=true');
         }
+
+        // Show rating prompt AFTER navigation (only when creating new list)
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          await _showRatingPromptIfNeeded();
+        });
       }
     } catch (e) {
       debugPrint('createListAndGo error: $e');
@@ -421,7 +429,71 @@ class _CreatingWidgetState extends State<CreatingWidget> {
     }
   }
 
+  Future<void> _showRatingPromptIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final installTimestamp = prefs.getInt('install_date') ?? 0;
+    final snoozeUntil = prefs.getInt('rating_snooze_until') ?? 0;
+    final hasRated = prefs.getBool('has_rated') ?? false;
+
+    if (hasRated) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now < snoozeUntil) return;
+
+    final installDate = DateTime.fromMillisecondsSinceEpoch(installTimestamp);
+    final daysSinceInstall = DateTime.now().difference(installDate).inDays;
+
+    if (daysSinceInstall < 24) return;
+
+    if (!mounted) return;
+
+    final shouldRate = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        title: const Text(
+          'Enjoying List Easy?',
+          style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          "You've been using the app for over 24 days! It would mean a lot if you could take a moment to rate us on Google Play. Thank you!",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Maybe later',
+                style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rate now', style: TextStyle(color: Colors.cyan)),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (shouldRate == true) {
+      const url =
+          'https://play.google.com/store/apps/details?id=com.rusticangel.list_easy&showAllReviews=true';
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      await prefs.setBool('has_rated', true);
+    } else {
+      final snoozeDate = DateTime.now().add(const Duration(days: 7));
+      await prefs.setInt(
+          'rating_snooze_until', snoozeDate.millisecondsSinceEpoch);
+    }
+  }
+
   void _showNoInternetDialog() {
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -705,7 +777,6 @@ class _CreatingWidgetState extends State<CreatingWidget> {
                       ),
                     ],
                   ),
-                  // No footer text — clean look
                 ],
               ),
             ),
