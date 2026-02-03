@@ -47,6 +47,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   bool _isSharing = false;
 
+  static const String shareBaseUrl = 'https://list-easy.vercel.app';
+
   static const String appDownloadBaseUrl =
       'https://play.google.com/store/apps/details?id=com.rusticangel.list_easy';
 
@@ -72,7 +74,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
   Future<void> _initPrefs() async {
     _prefs = await SharedPreferences.getInstance();
-    debugPrint('>>> SharedPreferences initialized successfully');
   }
 
   @override
@@ -103,18 +104,11 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     if (!mounted) return;
     setState(() => isLoading = true);
 
-    debugPrint('>>> ShoppingList: Starting loadList()');
-
-    if (_prefs == null) {
-      debugPrint('>>> Prefs not ready — awaiting initialization...');
-      await _initPrefs();
-    }
+    if (_prefs == null) await _initPrefs();
 
     String? jsonString = _prefs!.getString('current_shopping_draft');
 
     if (jsonString != null && jsonString.isNotEmpty && jsonString != '[]') {
-      debugPrint(
-          '>>> ShoppingList: Found prefs draft (${jsonString.length} chars)');
       try {
         final List<dynamic> decoded = jsonDecode(jsonString);
         setState(() {
@@ -132,8 +126,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
             };
           }).toList();
         });
-        debugPrint(
-            '>>> ShoppingList: Loaded ${items.length} items from prefs draft');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -144,8 +136,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
         setState(() => isLoading = false);
         return;
-      } catch (e, stack) {
-        debugPrint('>>> ShoppingList: Prefs draft parse error: $e\n$stack');
+      } catch (e) {
+        // Silent fail — try backup file next
       }
     }
 
@@ -153,16 +145,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     if (await file.exists()) {
       try {
         jsonString = await file.readAsString();
-        debugPrint(
-            '>>> ShoppingList: Read backup file (${jsonString.length} chars)');
-      } catch (e) {
-        debugPrint('>>> ShoppingList: File read error: $e');
-      }
-    }
-
-    if (jsonString != null && jsonString.isNotEmpty && jsonString != '[]') {
-      debugPrint('>>> ShoppingList: Found saved draft in backup file');
-      try {
         final List<dynamic> decoded = jsonDecode(jsonString);
         setState(() {
           items = decoded.map<Map<String, dynamic>>((dynamic raw) {
@@ -179,8 +161,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
             };
           }).toList();
         });
-        debugPrint(
-            '>>> ShoppingList: Loaded ${items.length} items from backup file');
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -190,8 +170,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
         setState(() => isLoading = false);
         return;
-      } catch (e, stack) {
-        debugPrint('>>> ShoppingList: Backup file parse error: $e\n$stack');
+      } catch (e) {
+        // Silent fail — fall through to Supabase or empty
       }
     }
 
@@ -211,7 +191,6 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           await _saveCurrentListToJson();
         }
       } catch (e) {
-        debugPrint('>>> Supabase load error: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Offline mode — starting fresh')),
@@ -223,44 +202,30 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     if (mounted) {
       setState(() => isLoading = false);
     }
-    debugPrint('>>> ShoppingList: Load finished (${items.length} items)');
     await _startTutorialIfNeeded();
   }
 
   Future<void> _saveCurrentListToJson() async {
-    if (_prefs == null) {
-      debugPrint('>>> Prefs not ready before save — awaiting...');
-      await _initPrefs();
-    }
+    if (_prefs == null) await _initPrefs();
 
     final jsonString = jsonEncode(items);
 
     try {
       await _prefs!.setString('current_shopping_draft', jsonString);
-      debugPrint(
-          '>>> Saved to SharedPrefs (${items.length} items) | length: ${jsonString.length} chars');
 
       final path = await _draftFilePath;
       final tempPath = '$path.tmp';
       final tempFile = File(tempPath);
 
       await tempFile.writeAsString(jsonString);
-      final sink = tempFile.openWrite(mode: FileMode.append);
-      await sink.flush();
-      await sink.close();
       await tempFile.rename(path);
-
-      debugPrint('>>> Backup file atomic save OK | path: $path');
-
-      final after = await File(path).readAsString();
-      debugPrint('>>> Verify backup file: ${after.length} chars');
     } catch (e) {
-      debugPrint('>>> Save failed: $e');
+      // Silent fail — local backup is best-effort
     }
   }
 
   Future<void> toggleChecked(int index) async {
-    if (items.isEmpty || index >= items.length) return;
+    if (index < 0 || index >= items.length) return;
 
     final item = items[index];
     final newChecked = !(item['is_checked'] as bool? ?? false);
@@ -270,9 +235,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         await supabase
             .from('shopping_list_items')
             .update({'is_checked': newChecked}).eq('id', item['id']);
-      } catch (e) {
-        debugPrint('>>> Supabase toggle error: $e');
-      }
+      } catch (_) {}
     }
 
     if (!mounted) return;
@@ -286,7 +249,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   }
 
   Future<void> updateQuantity(int index, int delta) async {
-    if (items.isEmpty || index >= items.length) return;
+    if (index < 0 || index >= items.length) return;
 
     final item = items[index];
     final newQty = (item['quantity'] as int? ?? 1) + delta;
@@ -297,9 +260,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         await supabase
             .from('shopping_list_items')
             .update({'quantity': newQty}).eq('id', item['id']);
-      } catch (e) {
-        debugPrint('>>> Supabase quantity error: $e');
-      }
+      } catch (_) {}
     }
 
     if (!mounted) return;
@@ -309,7 +270,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
   }
 
   Future<void> updatePrice(int index, double newPrice) async {
-    if (items.isEmpty || index >= items.length) return;
+    if (index < 0 || index >= items.length) return;
 
     const double maxPrice = 9999999.99;
     if (newPrice > maxPrice) {
@@ -332,9 +293,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         await supabase
             .from('shopping_list_items')
             .update({'price': newPrice}).eq('id', item['id']);
-      } catch (e) {
-        debugPrint('>>> Supabase price error: $e');
-      }
+      } catch (_) {}
     }
 
     if (mounted) {
@@ -370,7 +329,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         child: Text(
           text,
           style: const TextStyle(
-              fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
+            fontSize: 16,
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -417,7 +379,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           .single();
 
       final shareId = response['share_id'] as String;
-      final shareLink = 'https://list-easy.vercel.app/share/$shareId';
+      final shareLink = '$shareBaseUrl/share/$shareId';
 
       final shareText = 'Check out my shopping list on List Easy!\n'
           'Total: ${formatPrice(total)}\n\n'
@@ -439,11 +401,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         );
       }
     } catch (e) {
-      debugPrint('>>> Share error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to share list — try again'),
+            content: Text('Failed to share — check internet and try again'),
             backgroundColor: Colors.red,
           ),
         );
@@ -481,9 +442,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
             .from('referrals')
             .update({'successful': true}).eq('referred_id', userId);
       }
-    } catch (e) {
-      debugPrint('Referral update error: $e');
-    }
+    } catch (_) {}
   }
 
   @override
@@ -559,8 +518,9 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           controller: controller,
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
-              hintText: 'Item name',
-              hintStyle: TextStyle(color: Colors.white54)),
+            hintText: 'Item name',
+            hintStyle: TextStyle(color: Colors.white54),
+          ),
         ),
         actions: [
           TextButton(
@@ -588,9 +548,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
             'price': 0.0,
             'is_checked': false,
           });
-        } catch (e) {
-          debugPrint('>>> Supabase add extra error: $e');
-        }
+        } catch (_) {}
       }
 
       setState(() {
@@ -612,62 +570,53 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogCtx) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1C1C1E),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text(
-            'Thank you for using List Easy!',
-            style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          content: Text(
-            'Your total: ${formatPrice(total)}',
-            style: const TextStyle(color: Colors.white, fontSize: 18),
-            textAlign: TextAlign.center,
-          ),
-          actions: [
-            Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  if (!mounted) return;
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Thank you for using List Easy!',
+          style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: Text(
+          'Your total: ${formatPrice(total)}',
+          style: const TextStyle(color: Colors.white, fontSize: 18),
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton(
+              onPressed: () async {
+                if (!mounted) return;
 
-                  if (_prefs == null) {
-                    await _initPrefs();
-                  }
+                if (_prefs == null) await _initPrefs();
 
-                  await _prefs!.remove('current_shopping_draft');
-                  debugPrint('>>> Finish confirmed → prefs draft cleared');
+                await _prefs!.remove('current_shopping_draft');
 
-                  final file = File(await _draftFilePath);
-                  if (await file.exists()) {
-                    await file.delete();
-                    debugPrint('>>> Finish confirmed → backup file cleared');
-                  }
+                final file = File(await _draftFilePath);
+                if (await file.exists()) await file.delete();
 
-                  if (!mounted) return;
+                if (!mounted) return;
 
-                  // ignore: use_build_context_synchronously
-                  Navigator.pop(dialogCtx);
-                  await _updateReferralStatus();
-                  if (mounted) SystemNavigator.pop();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28)),
-                ),
-                child: const Text(
-                  'Goodbye',
-                  style: TextStyle(
-                      color: Colors.black, fontWeight: FontWeight.bold),
-                ),
+                // ignore: use_build_context_synchronously
+                Navigator.pop(dialogCtx);
+                await _updateReferralStatus();
+                if (mounted) SystemNavigator.pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28)),
+              ),
+              child: const Text(
+                'Goodbye',
+                style:
+                    TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
               ),
             ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 
@@ -685,7 +634,8 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
             title: const Text('Exit without finishing?',
                 style: TextStyle(color: Colors.white)),
             content: const Text(
-                'Your current list progress is saved automatically and will resume next time.'),
+              'Your current list progress is saved automatically and will resume next time.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -701,7 +651,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           ),
         );
 
-        if (shouldExit == true && context.mounted) {
+        if (shouldExit == true && mounted) {
           SystemNavigator.pop();
         }
       },
@@ -726,9 +676,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.cyan,
-                            ),
+                                strokeWidth: 2, color: Colors.cyan),
                           )
                         : const Icon(Icons.share, color: Colors.cyan, size: 22),
                     tooltip: 'Share this list',
@@ -969,8 +917,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                         ),
                       ),
                     ),
-                    // No footer text — clean look
-                    const SizedBox(height: 32), // optional bottom padding
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),
