@@ -1,64 +1,45 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    Alternatively, build your application passing the --base-href parameter
-    specifying the new root path of your web app.
-
-    Fore more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-  -->
-  <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- iOS meta tags & icons -->
+  <!-- Base path for SPA routing (Vercel root) -->
+  <base href="/">
+
+  <!-- iOS & PWA meta tags -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="List Easy SA">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f4f8">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d2428">
 
-  
-
-  <meta name="robots" content="noindex" />
+  <!-- SEO & noindex for preview deployment -->
+  <meta name="robots" content="noindex">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="icon" type="image/png" href="favicon.png">
 
-  <!-- Open Graph & SEO tags -->
-  <meta property="og:title" content="List Easy SA" />
-  <meta property="og:description" content="Built with FlutterFlow." />
-  <meta property="og:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png" /> 
-  <meta name="twitter:title" content="List Easy SA" />
-  <meta name="twitter:description" content="Built with FlutterFlow." />
-  <meta name="twitter:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png" />
-  <meta name="twitter:card" content="summary_large_image" />
-
-  <title> List Easy SA </title>
-  <meta name="description" content="Built with FlutterFlow." />
-    
-
-  <!-- Status Bar color in Safari browser (iOS) and PWA -->
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f4f8">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)"  content="#1d2428">
-
+  <!-- Manifest -->
   <link rel="manifest" href="manifest.json">
-  
+
+  <!-- Open Graph / Social sharing -->
+  <meta property="og:title" content="List Easy SA">
+  <meta property="og:description" content="The smartest grocery list app – built with Flutter & Supabase.">
+  <meta property="og:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="List Easy SA">
+  <meta name="twitter:description" content="The smartest grocery list app – built with Flutter & Supabase.">
+  <meta name="twitter:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
+
+  <title>List Easy SA</title>
 </head>
+
 <body>
-  
-  
-  
-  
-  
-  <script>
-    {{flutter_bootstrap_js}}
-  </script>
+  <!-- Flutter will inject its content here -->
+  <script src="flutter_bootstrap.js" async></script>
 </body>
+
 </html>
