@@ -23,6 +23,15 @@
                     "value": "application/json"
                 }
             ]
+        },
+        {
+            "source": "/app-ads.txt",
+            "headers": [
+                {
+                    "key": "Content-Type",
+                    "value": "text/plain"
+                }
+            ]
         }
     ]
 }
