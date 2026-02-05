@@ -30,7 +30,6 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
 /coverage/
 
 # Symbolication related
@@ -43,3 +42,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ──────────────────────────────────────────────────────────────
+# TEMPORARILY COMMENTED OUT TO ALLOW Vercel deployment of web build
+# Comment this back in after deployment is working (for mobile builds)
+# /build/
+# ──────────────────────────────────────────────────────────────
