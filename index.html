@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-  <!-- Critical: Base href must be "/" for Vercel root deployments -->
+  <!-- Critical for Vercel root deployments -->
   <base href="/">
 
   <!-- iOS & PWA meta tags -->
@@ -16,16 +16,16 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f4f8">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d2428">
 
-  <!-- SEO & noindex (good for preview/staging) -->
+  <!-- SEO & noindex (perfect for preview domain) -->
   <meta name="robots" content="noindex">
 
-  <!-- Favicon (must exist in build/web/) -->
+  <!-- Favicon -->
   <link rel="icon" type="image/png" href="/favicon.png">
 
-  <!-- Manifest (must exist in build/web/) -->
+  <!-- Manifest (PWA) -->
   <link rel="manifest" href="/manifest.json">
 
-  <!-- Open Graph & Twitter Card (for sharing preview links) -->
+  <!-- Open Graph / Social sharing (very good – keep) -->
   <meta property="og:title" content="List Easy SA">
   <meta property="og:description" content="The smartest grocery list app – built with Flutter & Supabase.">
   <meta property="og:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
@@ -37,22 +37,41 @@
   <meta name="twitter:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
 
   <title>List Easy SA</title>
+
+  <!-- Force HTML renderer if CanvasKit/WebGL fails (temporary debug) -->
+  <script>
+    window.flutterWebRenderer = "html";  // Change to "canvaskit" later if needed
+  </script>
 </head>
 
 <body>
-  <!-- Temporary visible splash (helps confirm the page is served before Flutter loads) -->
+  <!-- Visible splash – helps confirm HTML is served -->
   <div id="splash"
-    style="position:fixed; top:0; left:0; width:100%; height:100%; background:#000; color:#0ff; font-size:48px; font-weight:bold; text-align:center; padding-top:40vh; z-index:9999;">
+    style="position:fixed;top:0;left:0;width:100%;height:100%;background:#000;color:#0ff;font-size:48px;font-weight:bold;text-align:center;padding-top:40vh;z-index:9999;">
     Loading List Easy... 🛒
   </div>
 
-  <!-- Flutter bootstrap (injects the app) -->
+  <!-- VICTOR MARKER – remove after this test push -->
+  <div
+    style="position:fixed;top:10px;left:10px;background:yellow;color:black;padding:8px;font-size:20px;font-weight:bold;z-index:99999;border:2px solid red;">
+    VICTOR MARKER - THIS IS MY FILE - 05 Feb 2026
+  </div>
+
+  <!-- Extra debug line – remove later -->
+  <div
+    style="position:fixed;bottom:20px;left:20px;color:white;font-size:18px;background:rgba(0,0,0,0.7);padding:8px;z-index:9999;">
+    Debug: HTML loaded – waiting for Flutter
+  </div>
+
+  <!-- Flutter bootstrap -->
   <script src="flutter_bootstrap.js" async></script>
 
-  <!-- Hide splash when Flutter renders first frame -->
+  <!-- Hide splash & marker on first frame -->
   <script>
     window.addEventListener('flutter-first-frame', function () {
       document.getElementById('splash').style.display = 'none';
+      document.querySelector('div[style*="top:10px"]').style.display = 'none'; // hide marker
+      document.querySelector('div[style*="bottom:20px"]').style.display = 'none'; // hide debug
     });
   </script>
 </body>
