@@ -6,7 +6,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Base path for SPA routing (Vercel root) -->
+  <!-- Critical: Base href must be "/" for Vercel root deployments -->
   <base href="/">
 
   <!-- iOS & PWA meta tags -->
@@ -16,19 +16,21 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f4f8">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d2428">
 
-  <!-- SEO & noindex for preview deployment -->
+  <!-- SEO & noindex (good for preview/staging) -->
   <meta name="robots" content="noindex">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png">
+  <!-- Favicon (must exist in build/web/) -->
+  <link rel="icon" type="image/png" href="/favicon.png">
 
-  <!-- Manifest -->
-  <link rel="manifest" href="manifest.json">
+  <!-- Manifest (must exist in build/web/) -->
+  <link rel="manifest" href="/manifest.json">
 
-  <!-- Open Graph / Social sharing -->
+  <!-- Open Graph & Twitter Card (for sharing preview links) -->
   <meta property="og:title" content="List Easy SA">
   <meta property="og:description" content="The smartest grocery list app – built with Flutter & Supabase.">
   <meta property="og:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://list-easy-2ja4y1ars-rustic-angels-projects.vercel.app/">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="List Easy SA">
   <meta name="twitter:description" content="The smartest grocery list app – built with Flutter & Supabase.">
@@ -38,10 +40,21 @@
 </head>
 
 <body>
-  <!-- TEMPORARY: Force new commit & Vercel deployment - added 04 Feb 2026 14:45 SAST -->
+  <!-- Temporary visible splash (helps confirm the page is served before Flutter loads) -->
+  <div id="splash"
+    style="position:fixed; top:0; left:0; width:100%; height:100%; background:#000; color:#0ff; font-size:48px; font-weight:bold; text-align:center; padding-top:40vh; z-index:9999;">
+    Loading List Easy... 🛒
+  </div>
 
-  <!-- Flutter will inject its content here -->
+  <!-- Flutter bootstrap (injects the app) -->
   <script src="flutter_bootstrap.js" async></script>
+
+  <!-- Hide splash when Flutter renders first frame -->
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      document.getElementById('splash').style.display = 'none';
+    });
+  </script>
 </body>
 
 </html>
