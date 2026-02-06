@@ -2,7 +2,7 @@
     "rewrites": [
         {
             "source": "/app-ads-live.txt",
-            "destination": "/app-ads.txt"
+            "destination": "/app-ads-live.txt"
         },
         {
             "source": "/(.*)",
