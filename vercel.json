@@ -1,23 +1,12 @@
 {
-    "rewrites": [
+    "routes": [
         {
-            "source": "/app-ads.txt",
-            "destination": "/app-ads.txt"
+            "src": "/app-ads.txt",
+            "dest": "/app-ads.txt"
         },
         {
-            "source": "/(.*)",
-            "destination": "/index.html"
-        }
-    ],
-    "headers": [
-        {
-            "source": "/app-ads.txt",
-            "headers": [
-                {
-                    "key": "Content-Type",
-                    "value": "text/plain; charset=utf-8"
-                }
-            ]
+            "src": "/(.*)",
+            "dest": "/index.html"
         }
     ]
 }
