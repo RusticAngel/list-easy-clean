@@ -1,6 +1,10 @@
 {
     "rewrites": [
         {
+            "source": "/app-ads.txt",
+            "destination": "/app-ads.txt"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
         }
@@ -11,7 +15,7 @@
             "headers": [
                 {
                     "key": "Content-Type",
-                    "value": "text/plain"
+                    "value": "text/plain; charset=utf-8"
                 }
             ]
         }
