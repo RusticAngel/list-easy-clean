@@ -50,6 +50,7 @@ vercel.json.old
 # Local web debug / temp files (optional but helpful)
 .dart_tool/web/
 .web-server/
+build/
 
 # ──────────────────────────────────────────────────────────────
 # TEMPORARILY COMMENTED OUT TO ALLOW Vercel deployment of web build
