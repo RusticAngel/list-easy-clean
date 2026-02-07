@@ -2,74 +2,90 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-  <!-- Critical for Vercel root deployments -->
-  <base href="/">
+  <!-- Required for Vercel / root hosting -->
+  <base href="/" />
 
-  <!-- iOS & PWA meta tags -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="List Easy SA">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f4f8">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d2428">
+  <!-- PWA / iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="List Easy SA" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f1f4f8" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d2428" />
 
-  <!-- SEO & noindex (perfect for preview domain) -->
-  <meta name="robots" content="noindex">
+  <!-- SEO (preview domain only) -->
+  <meta name="robots" content="noindex" />
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="/favicon.png">
+  <!-- Icons / Manifest -->
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="manifest" href="/manifest.json" />
 
-  <!-- Manifest (PWA) -->
-  <link rel="manifest" href="/manifest.json">
+  <!-- Social -->
+  <meta property="og:title" content="List Easy SA" />
+  <meta property="og:description" content="The smartest grocery list app – built with Flutter & Supabase." />
+  <meta property="og:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://list-easy.vercel.app/" />
 
-  <!-- Open Graph / Social sharing (very good – keep) -->
-  <meta property="og:title" content="List Easy SA">
-  <meta property="og:description" content="The smartest grocery list app – built with Flutter & Supabase.">
-  <meta property="og:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://list-easy-2ja4y1ars-rustic-angels-projects.vercel.app/">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="List Easy SA">
-  <meta name="twitter:description" content="The smartest grocery list app – built with Flutter & Supabase.">
-  <meta name="twitter:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png">
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="List Easy SA" />
+  <meta name="twitter:description" content="The smartest grocery list app – built with Flutter & Supabase." />
+  <meta name="twitter:image" content="/assets/assets/images/file_000000009c54623081379deaea740bf6.png" />
 
   <title>List Easy SA</title>
 
-  <!-- Force HTML renderer if CanvasKit/WebGL fails (temporary debug) -->
+  <!-- Flutter renderer override (debug-safe) -->
   <script>
-    window.flutterWebRenderer = "html";  // Change to "canvaskit" later if needed
+    window.flutterWebRenderer = "html";
   </script>
 </head>
 
 <body>
-  <!-- NEW FORCE COMMIT TRIGGER - remove after successful push -->
-  <!-- FORCE-COMMIT-TEST-2026-02-05-Victor-new-line-to-trigger-Git -->
-
-  <!-- Visible splash – helps confirm HTML is served -->
-  <div id="splash"
-    style="position:fixed;top:0;left:0;width:100%;height:100%;background:#000;color:#0ff;font-size:48px;font-weight:bold;text-align:center;padding-top:40vh;z-index:9999;">
-    Loading List Easy... 🛒
+  <!-- Splash screen -->
+  <div id="flutter-splash" style="
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #0ff;
+      font-size: 42px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    ">
+    Loading List Easy… 🛒
   </div>
 
-
-  <!-- Extra debug line – remove later -->
-  <div
-    style="position:fixed;bottom:20px;left:20px;color:white;font-size:18px;background:rgba(0,0,0,0.7);padding:8px;z-index:9999;">
-    Debug: HTML loaded – waiting for Flutter
+  <!-- Debug badge (safe removable) -->
+  <div id="flutter-debug" style="
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      color: #fff;
+      font-size: 14px;
+      background: rgba(0, 0, 0, 0.65);
+      padding: 6px 10px;
+      border-radius: 6px;
+      z-index: 9999;
+    ">
+    HTML loaded – waiting for Flutter
   </div>
 
   <!-- Flutter bootstrap -->
   <script src="flutter_bootstrap.js" async></script>
 
-  <!-- Hide splash & marker on first frame -->
+  <!-- Cleanup on first Flutter frame -->
   <script>
-    window.addEventListener('flutter-first-frame', function () {
-      document.getElementById('splash').style.display = 'none';
-      document.querySelector('div[style*="top:10px"]').style.display = 'none'; // hide marker
-      document.querySelector('div[style*="bottom:20px"]').style.display = 'none'; // hide debug
+    window.addEventListener("flutter-first-frame", function () {
+      const splash = document.getElementById("flutter-splash");
+      const debug = document.getElementById("flutter-debug");
+
+      if (splash) splash.remove();
+      if (debug) debug.remove();
     });
   </script>
 </body>
