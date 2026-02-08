@@ -1,11 +1,11 @@
 // lib/pages/shopping_list/shopping_list_widget.dart
 // FINAL LAUNCH VERSION — COMPACT + QUANTITY BUTTONS + FULL OFFLINE SUPPORT
-// Ads disabled for clean v1.0 launch
-// FIXED: Tutorial shows ONLY once on first real load (persistent flag + post-load check)
-// FIXED: Currency uses actual device locale (no forced $)
-// FIXED: Non-bouncing handled globally in main.dart
-// FIXED: All mounted guards + missing methods added
-// CLEANED: Removed unused fields & improved null-safety
+// Ads placeholders added: banner at bottom (hidden until verification), interstitial only on Goodbye
+// FIXED: All 'use_build_context_synchronously' warnings with mounted checks
+// FIXED: Removed unused _showBannerPlaceholder field
+// UPDATED: Banner placeholder hidden with comment block — uncomment when verified
+// FIXED: Dead code warning removed by using comment instead of if (false)
+// FIXED: WhatsApp sharing now sends ONE clean link (HTTPS shared list) — no double previews
 
 import 'dart:async';
 import 'dart:convert';
@@ -120,6 +120,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
     if (jsonString != null && jsonString.isNotEmpty && jsonString != '[]') {
       try {
         final List<dynamic> decoded = jsonDecode(jsonString);
+        if (!mounted) return;
         setState(() {
           items = decoded.map<Map<String, dynamic>>((dynamic raw) {
             final item = raw as Map<String, dynamic>? ?? {};
@@ -143,6 +144,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           );
         }
 
+        if (!mounted) return;
         setState(() => isLoading = false);
 
         // Start tutorial after items are loaded (first launch only)
@@ -158,6 +160,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
       try {
         jsonString = await file.readAsString();
         final List<dynamic> decoded = jsonDecode(jsonString);
+        if (!mounted) return;
         setState(() {
           items = decoded.map<Map<String, dynamic>>((dynamic raw) {
             final item = raw as Map<String, dynamic>? ?? {};
@@ -180,6 +183,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           );
         }
 
+        if (!mounted) return;
         setState(() => isLoading = false);
 
         // Start tutorial after items are loaded (first launch only)
@@ -199,13 +203,13 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
             .order('is_checked', ascending: true)
             .order('created_at');
 
-        if (mounted) {
-          setState(() {
-            items = List<Map<String, dynamic>>.from(data);
-          });
-          await _saveCurrentListToJson();
-        }
+        if (!mounted) return;
+        setState(() {
+          items = List<Map<String, dynamic>>.from(data);
+        });
+        await _saveCurrentListToJson();
 
+        if (!mounted) return;
         setState(() => isLoading = false);
 
         // Start tutorial after items are loaded (first launch only)
@@ -370,6 +374,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
 
     if (_isSharing) return;
 
+    if (!mounted) return;
     setState(() => _isSharing = true);
 
     try {
@@ -382,7 +387,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
+                      strokeWidth: 2, color: Colors.cyan),
                 ),
                 SizedBox(width: 12),
                 Text('Preparing share...'),
@@ -401,12 +406,13 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
           .single();
 
       final shareId = response['share_id'] as String;
-      final shareLink = 'https://list-easy.vercel.app/share/$shareId';
+      final shareLink =
+          'https://app.listeasy.com/share/$shareId'; // ← Your real domain here
 
       final shareText = 'Check out my shopping list on List Easy!\n'
           'Total: ${formatPrice(total)}\n\n'
-          'Open here: $shareLink\n\n'
-          'Get the app to create your own lists: https://play.google.com/store/apps/details?id=com.rusticangel.list_easy';
+          'Tap to view: $shareLink\n\n'
+          '(Opens in the app — or downloads List Easy if not installed yet)';
 
       await Share.share(
         shareText,
@@ -572,6 +578,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
         } catch (_) {}
       }
 
+      if (!mounted) return;
       setState(() {
         items.add({
           'id': items.length + 1,
@@ -610,6 +617,10 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
               onPressed: () async {
                 if (!mounted) return;
 
+                // Interstitial placeholder — would show real ad here later
+                // For now: just a visual marker in code (no UI popup)
+                // Replace with real interstitial show code after verification
+
                 if (_prefs == null) await _initPrefs();
 
                 await _prefs!.remove('current_shopping_draft');
@@ -622,6 +633,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                 // ignore: use_build_context_synchronously
                 Navigator.pop(dialogCtx);
                 await _updateReferralStatus();
+
                 if (mounted) SystemNavigator.pop();
               },
               style: ElevatedButton.styleFrom(
@@ -746,6 +758,7 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                                         color: Colors.white, size: 20),
                                   ),
                                   onDismissed: (_) {
+                                    if (!mounted) return;
                                     setState(() => items.removeAt(i));
                                     _saveCurrentListToJson();
                                   },
@@ -938,6 +951,31 @@ class _ShoppingListWidgetState extends State<ShoppingListWidget> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+
+                    // Banner placeholder — hidden until AdMob verification
+                    // Uncomment the block below when ready to show real ads
+                    /*
+                    Container(
+                      height: 60,
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[900],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'Banner Ad Placeholder\n(Add real AdMob unit ID after verification)',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    */
+
                     const SizedBox(height: 32),
                   ],
                 ),

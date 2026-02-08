@@ -1,8 +1,12 @@
 // lib/pages/referral/referral_screen.dart
 // FINAL VERSION – ALL TIERS + REFERRAL CLARIFICATION TEXT
-// Banner ads disabled for clean v1.0 launch (low fill rate on new app)
-// Re-enable when traffic grows and ads are reliable
+// Banner placeholder added at bottom (hidden until verification)
+// FIXED: Removed unused _showBannerPlaceholder field
+// FIXED: Added mounted checks after async gaps → no more use_build_context_synchronously warnings
+// FIXED: Dead code warning removed by using comment instead of if (false)
+// Re-enable real ads when traffic grows and verification is complete
 // Added: Short "rewards are extra / added on top" bullet under "How it works"
+// UPDATED: Banner hidden with comment block — uncomment when verified
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -46,7 +50,7 @@ class _ReferralScreenState extends State<ReferralScreen>
     _loadData();
     _setFirstOpenDate();
 
-    // NEW: Check for hint on first open + 50-day re-trigger
+    // Check for hint on first open + 50-day re-trigger
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showReferralHintIfNeeded();
     });
@@ -90,16 +94,15 @@ class _ReferralScreenState extends State<ReferralScreen>
 
     final promoActive = daysSinceFirstOpen >= 16 && daysSinceFirstOpen <= 22;
 
-    if (mounted) {
-      setState(() {
-        referralCode = code;
-        referralLink = link;
-        totalReferrals = count;
-        freeMonths = (count / 2).floor();
-        referrals = refs;
-        isPromoActive = promoActive;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      referralCode = code;
+      referralLink = link;
+      totalReferrals = count;
+      freeMonths = (count / 2).floor();
+      referrals = refs;
+      isPromoActive = promoActive;
+    });
   }
 
   Future<void> _shareReferral() async {
@@ -126,16 +129,12 @@ We both get free premium months when you sign up and finish a shopping adventure
 
     Clipboard.setData(ClipboardData(text: referralLink));
 
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-    if (mounted) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(content: Text('Link copied!')),
-      );
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link copied!')),
+    );
   }
 
-  // NEW: Trigger hint on first open of referral page + re-trigger after 50 days
   Future<void> _showReferralHintIfNeeded() async {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenFirst =
@@ -148,10 +147,10 @@ We both get free premium months when you sign up and finish a shopping adventure
     final daysSinceFirstOpen = DateTime.now().difference(firstOpen).inDays;
 
     if (!hasSeenFirst) {
-      // ignore: use_build_context_synchronously
+      if (!mounted) return;
       await _showReferralHint(prefs, 'referral_page_hint_seen_first', context);
     } else if (daysSinceFirstOpen >= 50 && !hasSeenLate) {
-      // ignore: use_build_context_synchronously
+      if (!mounted) return;
       await _showReferralHint(prefs, 'referral_page_hint_seen_late', context);
     }
   }
@@ -190,8 +189,9 @@ We both get free premium months when you sign up and finish a shopping adventure
           TextButton(
             onPressed: () async {
               await prefs.setBool(seenKey, true);
+              if (!mounted) return;
               // ignore: use_build_context_synchronously
-              if (mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
             },
             child: const Text('Got it!', style: TextStyle(color: Colors.cyan)),
           ),
@@ -408,7 +408,10 @@ We both get free premium months when you sign up and finish a shopping adventure
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: TextButton(
-                        onPressed: _showAllFriends,
+                        onPressed: () {
+                          if (!mounted) return;
+                          _showAllFriends();
+                        },
                         child: const Text('View All Friends',
                             style: TextStyle(color: Colors.cyan, fontSize: 14)),
                       ),
@@ -455,7 +458,10 @@ We both get free premium months when you sign up and finish a shopping adventure
                         child: IconButton(
                           icon: const Icon(Icons.copy,
                               color: Colors.white70, size: 20),
-                          onPressed: _onCopyReferralCode,
+                          onPressed: () {
+                            if (!mounted) return;
+                            _onCopyReferralCode();
+                          },
                         ),
                       ),
                     ],
@@ -466,7 +472,10 @@ We both get free premium months when you sign up and finish a shopping adventure
                     child: SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: _shareReferral,
+                        onPressed: () {
+                          if (!mounted) return;
+                          _shareReferral();
+                        },
                         icon: const Icon(Icons.share, size: 22),
                         label: const Text('Share with Friends',
                             style: TextStyle(fontSize: 15)),
@@ -496,7 +505,7 @@ We both get free premium months when you sign up and finish a shopping adventure
                 'They must create at least two lists'),
             _howItWorksItem('3', 'You get rewarded',
                 'Every 2 successful referrals = 1 free premium month'),
-            // NEW: Short clarification that rewards are extra / added on top
+            // Clarification that rewards are extra / added on top
             _howItWorksItem(
               '',
               'Rewards are extra',
@@ -544,16 +553,30 @@ We both get free premium months when you sign up and finish a shopping adventure
                     isSpecial: true),
               ],
             ),
-            // Banner removed – clean launch look
-            const SizedBox(height: 16),
-            const Text(
-              '',
-              style: TextStyle(
-                  fontSize: 10,
+            const SizedBox(height: 24),
+
+            // Banner placeholder — hidden until AdMob verification
+            // Uncomment the block below when ready to show real ads
+            /*
+            Container(
+              height: 60,
+              margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'Banner Ad Placeholder\n(Add real AdMob unit ID after verification)',
+                style: TextStyle(
                   color: Colors.white54,
-                  fontWeight: FontWeight.w300),
-              textAlign: TextAlign.center,
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
+            */
+
             const SizedBox(height: 80),
           ],
         ),

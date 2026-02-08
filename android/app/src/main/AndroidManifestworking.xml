@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.rusticangel.list_easy">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Required for Supabase, OneSignal, ads, network calls -->
+    <!-- REQUIRED for Supabase, OneSignal, any network calls -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Optional but recommended for production: allow cleartext traffic only if you have non-HTTPS endpoints -->
+    <!-- <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" /> -->
+    <!-- <application android:usesCleartextTraffic="true"> ... </application> -->
 
     <application
         android:name="${applicationName}"
@@ -13,7 +16,7 @@
         android:theme="@style/LaunchTheme"
         android:resizeableActivity="false">
 
-        <!-- AdMob App ID – LIVE & WORKING -->
+        <!-- YOUR REAL ADMOB APP ID — LIVE & WORKING -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-1957460965962453~9862917268"/>
@@ -31,29 +34,24 @@
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
-            <!-- Launcher intent-filter -->
+            <!-- Launcher intent-filter (already there) -->
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Primary deep link: HTTPS for shared lists -->
+            <!-- NEW: Deep link intent-filter for shared shopping lists -->
+            <!-- Opens https://app.listeasy.com/share/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx links directly in the app -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
+
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+
                 <data
                     android:scheme="https"
                     android:host="app.listeasy.com"
                     android:pathPrefix="/share" />
-            </intent-filter>
-
-            <!-- NEW: Custom scheme fallback for stronger "open in app" when app is installed -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="listeasy" />
             </intent-filter>
 
         </activity>

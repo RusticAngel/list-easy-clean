@@ -2,7 +2,9 @@
 // FINAL + GLOBAL CURRENCY + CLEAN THEME + FULL OFFLINE SUPPORT + PUSH NOTIFICATIONS
 // FIXED: Draft popup moved to CreatingWidget (reliable localizations)
 // No root-level draft check anymore — simpler & crash-free
-// UPDATED: Router now points /share/:shareId to editable SharedShoppingListWidget
+// FIXED: Deep linking to /share/:shareId now goes directly to SharedShoppingListWidget
+//       for already logged-in users (even when app was closed)
+// ADDED: Router waits for auth session before redirect + protects /share/ paths
 // ADDED: Non-bouncing showcases globally + install date tracking for 24-day rating prompt
 
 import 'dart:async';
@@ -22,6 +24,15 @@ import 'pages/shopping_list/shopping_list_widget.dart';
 import 'pages/referral/referral_screen.dart';
 import 'pages/share/shared_shopping_list_widget.dart';
 import 'services/currency_service.dart';
+
+// Listen to auth state changes so router can refresh redirects
+class SupabaseAuthNotifier extends ChangeNotifier {
+  SupabaseAuthNotifier() {
+    Supabase.instance.client.auth.onAuthStateChange.listen((_) {
+      notifyListeners();
+    });
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -147,10 +158,38 @@ class _OfflineBannerState extends State<OfflineBanner> {
 
 final _router = GoRouter(
   initialLocation: '/',
+  refreshListenable:
+      SupabaseAuthNotifier(), // Re-evaluates redirect when auth state changes
+
+  redirect: (context, state) async {
+    // Wait briefly for Supabase to restore session (critical for cold-start deep links)
+    if (Supabase.instance.client.auth.currentSession == null) {
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    final session = Supabase.instance.client.auth.currentSession;
+    final isLoggedIn = session != null && !session.isExpired;
+
+    final location = state.uri.path;
+
+    // Protect shared list routes — never redirect away from /share/...
+    if (location.startsWith('/share/')) {
+      return null; // Proceed directly to SharedShoppingListWidget
+    }
+
+    // Only apply auth redirect for root path
+    if (location == '/' || location.isEmpty) {
+      return isLoggedIn ? '/create' : '/signup';
+    }
+
+    // All other routes — no forced redirect
+    return null;
+  },
+
   routes: [
     ShellRoute(
       builder: (context, state, child) {
-        final currentLocation = GoRouterState.of(context).matchedLocation;
+        final currentLocation = state.uri.path;
         final isAuthRoute = currentLocation.startsWith('/login') ||
             currentLocation.startsWith('/signup');
 
@@ -163,10 +202,8 @@ final _router = GoRouter(
       routes: [
         GoRoute(
           path: '/',
-          redirect: (context, state) {
-            final loggedIn = Supabase.instance.client.auth.currentUser != null;
-            return loggedIn ? '/create' : '/signup';
-          },
+          redirect: (context, state) => null, // Handled in global redirect
+          builder: (context, state) => const SizedBox.shrink(),
         ),
         GoRoute(
           path: '/signup',

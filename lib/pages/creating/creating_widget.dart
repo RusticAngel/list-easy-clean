@@ -8,6 +8,8 @@
 // Refer button: "Get Free Months"
 // FIXED: Removed invalid 'animate' param (non-bouncing handled globally in main.dart)
 // FIXED: Added mounted checks after async gaps
+// ADDED: Banner ad placeholder at bottom (hidden until AdMob verification)
+// UPDATED: Banner hidden with comment block — uncomment when ready to show real ads
 
 import 'dart:async';
 import 'dart:convert';
@@ -781,6 +783,30 @@ class _CreatingWidgetState extends State<CreatingWidget> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+
+          // Banner ad placeholder — hidden until AdMob verification
+          // Uncomment the block below when ready to show real ads
+          /*
+          Container(
+            height: 60,
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'Banner Ad Placeholder\n(Add real AdMob unit ID after verification)',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          */
+
           SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 80),
         ],
       ),
